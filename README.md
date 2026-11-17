@@ -93,6 +93,7 @@ and returns `report_stale: false` (no additional invalidation). See [confirmatio
 
 Current routes: DELETE `/api/loans/{loan_id}/`, PATCH/DELETE `/api/repayment-savings/{saving_id}/`, GET/POST `/api/repayment-savings/`, GET/POST `/api/loans/`, POST `/api/loans/preview/`, GET `/api/loans/{loan_id}/rate-history/`, GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
 GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/api/risks/simulate/`, GET `/api/payments/`, GET `/api/payments/{payment_id}/`, PATCH `/api/payments/schedule/{due_item_id}/confirmation/`.
+Finance profile routes: GET/PUT `/api/budgets/profile/`.
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
@@ -108,6 +109,11 @@ income -5%, or a one-time current-month expense of 500,000 won. Direct slider va
 validate an owner-scoped filter; household calculations still include every active loan. The read-only request
 does not advance revision. Missing required query/engine implementations return 503; no runtime fixtures exist.
 See [risk input and projection contracts](docs/RISK_INPUTS.md) for cash, target and uncertainty handling.
+
+Finance profile GET returns 404 before the first save. PUT validates whole-won amounts, the income type and payday,
+and synchronizes the anonymous user's income type. Zero and unknown emergency funds remain distinct.
+Profile changes update only current/future unconfirmed DEFAULT months, preserving past/INPUT/confirmed months
+and each month's original discretionary limit. These two APIs work without Team 1 loan/engine implementations.
 
 ## Shared development
 
