@@ -74,6 +74,11 @@ and synchronizes the anonymous user's income type. Zero and unknown emergency fu
 Profile changes update only current/future unconfirmed DEFAULT months, preserving past/INPUT/confirmed months
 and each month's original discretionary limit. These two APIs work without Team 1 loan/engine implementations.
 
+Onboarding uses GET `/api/onboarding/` and POST `/api/onboarding/complete/`.
+It requires an active owned loan, a saved finance profile and a configured plan for every active loan.
+Missing installment prepayment policies or BULLET target/saving plans retain the goal step.
+Repeated successful completion does not advance revision. Until Team 1 query ports are integrated it returns 503.
+
 ## Shared development
 
 [Technical contracts](docs/CONTRACT.md) define domain ownership, ports and migration reservations.
