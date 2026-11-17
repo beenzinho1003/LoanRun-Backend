@@ -59,7 +59,7 @@ CI executes the same build without production secrets.
   Repeated identical transitions do not advance revision. Billing is always disabled.
 
 Current routes: GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
-GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`.
+GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, GET/PUT `/api/budgets/profile/`.
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
@@ -68,6 +68,11 @@ Month filters apply to payments. The CSV uses UTF-8 BOM, CRLF, quoted cells and 
 The original nine columns are followed by `fee_amount,savings_used_amount`, as required by the detailed export rules.
 Success is a CSV attachment; errors use the JSON envelope. Team 1 supplies the owner-scoped `LoanQueryPort` projections;
 until those implementations are integrated, export returns `503 SERVICE_UNAVAILABLE` without runtime placeholder data.
+
+Finance profile GET returns 404 before the first save. PUT validates whole-won amounts, the income type and payday,
+and synchronizes the anonymous user's income type. Zero and unknown emergency funds remain distinct.
+Profile changes update only current/future unconfirmed DEFAULT months, preserving past/INPUT/confirmed months
+and each month's original discretionary limit. These two APIs work without Team 1 loan/engine implementations.
 
 ## Shared development
 
