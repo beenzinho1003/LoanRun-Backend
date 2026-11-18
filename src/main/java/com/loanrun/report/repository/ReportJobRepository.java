@@ -28,6 +28,13 @@ public class ReportJobRepository {
     public Optional<ReportJob> current(long userId,Long loanId,long revision,YearMonth month){return jdbc.query(
         "SELECT * FROM report_jobs WHERE user_id=? AND scope_key=? AND data_revision=? AND basis_month=?",mapper,userId,scope(loanId),revision,java.sql.Date.valueOf(month.atDay(1))).stream().findFirst();}
     public Optional<ReportJob> latest(long userId,Long loanId){return jdbc.query("SELECT * FROM report_jobs WHERE user_id=? AND scope_key=? ORDER BY id DESC LIMIT 1",mapper,userId,scope(loanId)).stream().findFirst();}
+    public List<ReportJob> expiredBefore(Instant cutoff,int limit){return jdbc.query("SELECT * FROM report_jobs WHERE status IN ('PENDING','RUNNING') AND updated_at<? ORDER BY user_id,id LIMIT ?",
+        mapper,Timestamp.from(cutoff),limit);}
+    @Transactional(propagation=Propagation.MANDATORY)
+    public boolean expire(ReportJob observed,Instant cutoff,Instant now){return jdbc.update("""
+        UPDATE report_jobs SET status='FAILED',error_code='REPORT_GENERATION_TIMEOUT',updated_at=?,next_retry_at=?
+        WHERE user_id=? AND id=? AND status IN ('PENDING','RUNNING') AND updated_at=? AND updated_at<?
+        """,Timestamp.from(now),Timestamp.from(now.plusSeconds(60)),observed.userId(),observed.id(),Timestamp.from(observed.updatedAt()),Timestamp.from(cutoff))==1;}
     /** Caller holds the user's mutation lock and validates optional loan ownership. No worker is dispatched here. */
     @Transactional(propagation=Propagation.MANDATORY)
     public ReportJob create(long userId,Long loanId,long revision,YearMonth month,String input,Instant now){

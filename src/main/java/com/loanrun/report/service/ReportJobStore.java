@@ -37,6 +37,12 @@ public class ReportJobStore {
         if(code==null||!code.matches("[A-Z0-9_]{1,64}")) throw new IllegalArgumentException("Use a fixed error code without exception details");
         var found=running(lease);return found.isPresent()&&jobs.fail(found.get(),code,clock.instant());
     }
+    public boolean expire(ReportJob observed,Instant cutoff){
+        locks.lock(observed.userId());
+        var current=jobs.internal(observed.id()).filter(job->job.userId()==observed.userId()&&job.status()==observed.status()
+            &&job.updatedAt().equals(observed.updatedAt())&&job.updatedAt().isBefore(cutoff));
+        return current.isPresent()&&jobs.expire(current.get(),cutoff,clock.instant());
+    }
     private Optional<ReportJob> running(Lease lease){
         locks.lock(lease.job().userId());
         return jobs.internal(lease.job().id()).filter(job->job.userId()==lease.job().userId()&&job.status()==ReportJob.Status.RUNNING&&job.updatedAt().equals(lease.job().updatedAt()));

@@ -26,7 +26,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.*;
 
 @Testcontainers
-@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties="loanrun.reports.worker-enabled=false")
 @Import(ReportJobStoreIntegrationTest.TimeConfig.class)
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 class ReportJobStoreIntegrationTest {
