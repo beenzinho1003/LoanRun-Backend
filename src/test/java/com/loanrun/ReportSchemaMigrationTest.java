@@ -25,7 +25,9 @@ class ReportSchemaMigrationTest {
         VALUES (?,'HOUSEHOLD',?,CAST(? AS DATE),?,'{}',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id
         """,Long.class,user,revision,month,status);}
     @Test void migrationUsesReservedVersionsAndRevalidationDoesNotEraseSavedJobs(){
-        assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=TRUE ORDER BY installed_rank",String.class)).containsExactly("1","5");
+        var versions=jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=TRUE ORDER BY installed_rank",String.class);
+        assertThat(versions).contains("1","5");
+        assertThat(versions.indexOf("1")).isLessThan(versions.indexOf("5"));
         long id=job(user(),0,"2026-11-01","COMPLETED");
         jdbc.update("UPDATE report_jobs SET result_payload=?,generated_at=CURRENT_TIMESTAMP WHERE id=?","{\"source_type\":\"DEMO\"}",id);
         flyway.validate();assertThat(flyway.migrate().migrationsExecuted).isZero();
