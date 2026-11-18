@@ -16,7 +16,7 @@ FREE/PRO transitions. Cached responses do not consume another attempt. Infrastru
 bounded worker are separate requirements before live external calls. No live OpenAI call is enabled here.
 
 Admission does not claim a completed calculation or install placeholder results. Worker/recovery are described
-in REPORT_WORKER.md; the calculation adapter remains separate. Do not count API #45
+in REPORT_WORKER.md; result calculation is described in REPORT_CALCULATION.md. Do not count API #45
 as fully integrated until they are wired and tested. V5/common-contract prerequisites remain under review, so
 this prepared fork branch must not become a cumulative central PR.
 

@@ -43,6 +43,10 @@ public class RiskSimulationService {
     }
     /** No persistence or session reads here. Internal callers must validate access before capturing input. */
     public Evaluation evaluate(RiskScenarioInput captured,ScenarioType type) {
+        return evaluate(captured,type,null);
+    }
+    /** Captured optional targets let internal reports preserve current-month overrides without live reads. */
+    public Evaluation evaluate(RiskScenarioInput captured,ScenarioType type,Map<YearMonth,List<PlannedAmount>> targets) {
         var facts=captured.household();
         var probe=rates.probe(facts);
         long basic=Math.subtractExact(Math.addExact(facts.due().scheduledCash(),facts.due().previousOutstandingCash()),facts.due().savingsUsedForDue());
@@ -60,7 +64,7 @@ public class RiskSimulationService {
         Long recurring=shortfall(type==ScenarioType.EXPENSE_UP?originalCash:available);
         var coverage=coverage(facts.finance().emergencyFund(),recurring);
         Long oneTime=available==null?null:type==ScenarioType.EXPENSE_UP?Math.subtractExact(shortfall(available),recurring):0L;
-        var feasibility=feasibility(captured,type,available);
+        var feasibility=feasibility(captured,type,available,targets);
         List<String> warnings=new ArrayList<>(feasibility.warnings());
         if(type==ScenarioType.RATE_UP&&!probe.hasVariableLoans()) warnings.add("고정금리 대출에는 금리 상승폭이 적용되지 않습니다.");
         var response=new Simulation(new Baseline(originalIncome,basic,originalCash,baseline.level(),baseline.score()),
@@ -76,12 +80,12 @@ public class RiskSimulationService {
         return RiskMath.assess(income,cash,burden,s.finance().actualDiscretionaryExpenses(),s.finance().discretionaryLimit(),s.variableExposurePct(),
             s.loans().stream().anyMatch(loan->loan.rateType()==RateType.VARIABLE),afterRate,s.monthlyTarget(),!s.loans().isEmpty());
     }
-    private Projection feasibility(RiskScenarioInput captured,ScenarioType type,Long available){
+    private Projection feasibility(RiskScenarioInput captured,ScenarioType type,Long available,Map<YearMonth,List<PlannedAmount>> targets){
         var s=captured.household();
         if(available==null||s.monthlyTarget()==null||s.loans().isEmpty()) return new Projection(null,null,Map.of(),List.of());
         if(available<0||(s.requiredSaving()!=null&&available<s.requiredSaving())) return new Projection("LOW",null,Map.of(),List.of());
         if(available<s.monthlyTarget()) return new Projection("MEDIUM",null,Map.of(),List.of());
-        var amounts=RiskScenarioAmounts.build(s,captured.payments(),captured.savings());
+        var amounts=targets==null?RiskScenarioAmounts.build(s,captured.payments(),captured.savings()):targets;
         Map<Long,BigDecimal> changed=new HashMap<>();
         if(type==ScenarioType.RATE_UP) for(var loan:s.loans()) if(loan.rateType()==RateType.VARIABLE) changed.put(loan.loanId(),loan.annualRate().add(BigDecimal.ONE));
         return payoff.project(s,amounts,changed);

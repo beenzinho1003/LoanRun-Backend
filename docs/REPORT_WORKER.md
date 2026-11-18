@@ -10,7 +10,7 @@ Worker logs contain exception class names only. No captured payload, upstream me
 Missing ReportCalculation implementations fail explicitly with SERVICE_UNAVAILABLE and no result payload.
 
 `loanrun.reports.worker-enabled=false` disables automatic dispatch for admission-only tests/development. The
-calculation adapter remains a separate change; this worker is not a placeholder adapter
+calculation adapter is described in REPORT_CALCULATION.md; this worker is not a placeholder adapter
 and does not itself call OpenAI or calculate loan schedules. Report #45 is not fully integrated until those remaining
 parts are wired and tested. Source contracts/V5 remain pending, so this prepared branch is not a cumulative PR.
 
