@@ -27,11 +27,14 @@ The initial port signatures are the bootstrap integration proposal; confirm fiel
 | `UserAccessPort` | Team 2 | Internal/async plan checks without HTTP request scope |
 | `PlanPresentationPort` | Team 1 (proposal) | Month allocation responses with caller-supplied overrides |
 
-The two new ports are a separate review proposal. `UserAccessPort` reloads server plan state per check;
-it does not expose a public user selector. `CurrentUserProvider` resolves the HTTP session and delegates to it.
-`PlanPresentationPort.monthViews(userId,asOf,month,overrides)` must read saved plans and apply the supplied monthly view
-without re-entering budget capacity/mutations. `PlanView` contains nullable forecast/actual fields and non-null warnings.
-No production replacement implementation is supplied. Confirm the projection fields/units with Team 1 before merging consumers.
+`UserAccessPort` reloads the owner's server plan state per check. HTTP `CurrentUserProvider` still resolves
+the session before delegating; its existing signatures and public API behavior are unchanged. This adds no
+public user selector, Team 1 projection, schema change or replacement domain implementation.
+
+`PlanPresentationPort` remains a separate Team 1 review proposal. `monthViews(userId,asOf,month,overrides)`
+reads saved plans and applies the supplied monthly view without re-entering budget capacity/mutations.
+`PlanView` contains nullable forecast/actual fields and non-null warnings. No replacement implementation is
+supplied. Keep the proposal Draft until Team 1 agrees on projection fields, units and implementation order.
 
 The engine is pure. No replacement engine or production empty-data stub is supplied.
 All loan queries are scoped by `userId`. A foreign or missing loan produces `404 LOAN_NOT_FOUND`.

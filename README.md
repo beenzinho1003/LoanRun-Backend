@@ -58,7 +58,12 @@ CI executes the same build without production secrets.
 - `PATCH /api/settings/subscription/` accepts `{"plan_type":"PRO"}` or `FREE` only when `DEMO_MODE=true`.
   Repeated identical transitions do not advance revision. Billing is always disabled.
 
-Current routes: GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
+Loan preview: `POST /api/loans/preview/` validates the shared registration input and returns the next basic
+payment, principal, interest and required BULLET saving using the real engine. It does not save a loan or
+advance financial revision. Manual product names work independently; selecting a product requires the
+Team 2 catalog port (503 until connected, missing product 404). Numeric strings and unknown fields are rejected.
+
+Current routes: POST `/api/loans/preview/`, GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
 GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/api/risks/simulate/`,
 GET/PATCH `/api/reports/comparison-settings/`, GET `/api/reports/latest/`, GET `/api/reports/{report_id}/`,
 POST `/api/reports/` (persisted admission; calculation adapter remains a separate feature),
@@ -106,6 +111,11 @@ See [generation admission](docs/REPORT_GENERATION.md) for the remaining worker p
 [Technical contracts](docs/CONTRACT.md) define domain ownership, ports and migration reservations.
 Team 1 implements the repayment engine and loans/payments/savings/plans. Team 2 owns common infrastructure
 and user/budget/catalog/dashboard/risk/report/settings. Runtime mock implementations are prohibited.
+
+The real, pure `RepaymentEngine` implementation lives in `finance/engine`; Spring wiring is in `finance/config`.
+See [calculation behavior and limits](docs/REPAYMENT_ENGINE.md) and the
+[implementation audit](docs/IMPLEMENTATION_STATUS.md). The engine adds no HTTP routes or migrations.
+Loan/ledger/plan query implementations are still required before the CSV and risk APIs can use actual domain data.
 
 Production must set `SPRING_PROFILES_ACTIVE=prod`, database credentials and exact `ALLOWED_ORIGINS`.
 Use an HTTPS reverse proxy and a private DB network; this local Compose file is not a production deployment.
