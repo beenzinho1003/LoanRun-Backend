@@ -94,7 +94,7 @@ and returns `report_stale: false` (no additional invalidation). See [confirmatio
 Current routes: DELETE `/api/loans/{loan_id}/`, PATCH/DELETE `/api/repayment-savings/{saving_id}/`, GET/POST `/api/repayment-savings/`, GET/POST `/api/loans/`, POST `/api/loans/preview/`, GET `/api/loans/{loan_id}/rate-history/`, GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
 GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/api/risks/simulate/`, GET `/api/payments/`, GET `/api/payments/{payment_id}/`, PATCH `/api/payments/schedule/{due_item_id}/confirmation/`.
 Finance profile routes: GET/PUT `/api/budgets/profile/`.
-Monthly budget route: GET `/api/budgets/{year_month}/`.
+Monthly budget routes: GET/PUT `/api/budgets/{year_month}/`.
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
@@ -123,8 +123,15 @@ payments/savings. Confirmed zero income or spending remains zero. Irregular plan
 observed months, including confirmed zero months, or the profile estimate when there is insufficient history.
 The request may materialize elapsed DEFAULT snapshots and refresh derived settlements under the user lock;
 it does not alter original inputs, long-term plans or revision. Internal budget queries do not write.
-Past corrections recalculate settlements and carry only to the immediately following month. Monthly editing,
-income recording and allocation editing are separate feature changes.
+Past corrections recalculate settlements and carry only to the immediately following month.
+Income recording and allocation editing are separate feature changes.
+
+Monthly budget PUT accepts only the current KST month and requires all four expense amounts. Income entries
+are preserved when omitted, replaced as a whole when supplied, and deleted with `[]`; explicit null is invalid.
+Existing entry IDs must belong to this user and month. Entry types follow the monthly income type, dates must
+be in the current month and no later than today, and amounts must be positive whole won. Saving confirms the
+expenses while preserving the original discretionary limit, then recalculates settlements and advances revision
+once. Failure in validation or dependent projections rolls back the entire change, including income replacement.
 
 ## Shared development
 
