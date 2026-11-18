@@ -35,7 +35,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.*;
 
 @Testcontainers
-@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"loanrun.demo-mode=true","server.servlet.session.cookie.secure=false","loanrun.reports.max-attempts-per-hour=3"})
+@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"loanrun.demo-mode=true","server.servlet.session.cookie.secure=false","loanrun.reports.max-attempts-per-hour=3","loanrun.reports.worker-enabled=false"})
 @Import({ReportJobStoreIntegrationTest.TimeConfig.class,ReportGenerationIntegrationTest.EventsConfig.class})
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 class ReportGenerationIntegrationTest {
