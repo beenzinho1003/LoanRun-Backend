@@ -59,7 +59,8 @@ CI executes the same build without production secrets.
   Repeated identical transitions do not advance revision. Billing is always disabled.
 
 Current routes: GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
-GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, GET/PUT `/api/budgets/profile/`.
+GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, GET/PUT `/api/budgets/profile/`,
+GET `/api/budgets/{year_month}/`.
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
@@ -73,6 +74,16 @@ Finance profile GET returns 404 before the first save. PUT validates whole-won a
 and synchronizes the anonymous user's income type. Zero and unknown emergency funds remain distinct.
 Profile changes update only current/future unconfirmed DEFAULT months, preserving past/INPUT/confirmed months
 and each month's original discretionary limit. These two APIs work without Team 1 loan/engine implementations.
+
+Monthly budget GET requires `YYYY-MM` and uses only the session owner's data. It combines saved monthly inputs
+with Team 1's due/payment/saving and plan projections. Missing implementations return `503 SERVICE_UNAVAILABLE`.
+Future months are forecasts without persisted future rows; unknown actuals remain null, including unobserved
+payments/savings. Confirmed zero income or spending remains zero. Irregular planning uses three completed
+observed months, including confirmed zero months, or the profile estimate when there is insufficient history.
+The request may materialize elapsed DEFAULT snapshots and refresh derived settlements under the user lock;
+it does not alter original inputs, long-term plans or revision. Internal budget queries do not write.
+Past corrections recalculate settlements and carry only to the immediately following month. Monthly editing,
+income recording and allocation editing are separate feature changes.
 
 ## Shared development
 

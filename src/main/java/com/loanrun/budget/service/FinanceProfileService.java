@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 @Service
 public class FinanceProfileService implements FinanceProfileQueryPort {
@@ -35,6 +36,12 @@ public class FinanceProfileService implements FinanceProfileQueryPort {
 
     public FinanceProfile requireProfile(long userId) {
         return profiles.find(userId).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "FINANCE_PROFILE_NOT_FOUND", "기본 재정정보를 찾을 수 없습니다."));
+    }
+
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void ensureCurrentSnapshots(long userId) {
+        users.findLocked(userId).orElseThrow(ApiException::unavailable);
+        profiles.find(userId).ifPresent(profile -> snapshotMissingMonths(profile, YearMonth.now(clock)));
     }
 
     @Transactional
