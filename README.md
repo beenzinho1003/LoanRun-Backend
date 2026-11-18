@@ -95,6 +95,7 @@ Current routes: DELETE `/api/loans/{loan_id}/`, PATCH/DELETE `/api/repayment-sav
 GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/api/risks/simulate/`, GET `/api/payments/`, GET `/api/payments/{payment_id}/`, PATCH `/api/payments/schedule/{due_item_id}/confirmation/`.
 Finance profile routes: GET/PUT `/api/budgets/profile/`.
 Monthly budget routes: GET/PUT `/api/budgets/{year_month}/`.
+Income entry route: POST `/api/income-entries/`.
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
@@ -132,6 +133,12 @@ Existing entry IDs must belong to this user and month. Entry types follow the mo
 be in the current month and no later than today, and amounts must be positive whole won. Saving confirms the
 expenses while preserving the original discretionary limit, then recalculates settlements and advances revision
 once. Failure in validation or dependent projections rolls back the entire change, including income replacement.
+
+Income POST records one current-month entry with a required `Idempotency-Key` (1–128 characters).
+An identical retry returns the original 201 response and ID without another revision; a different body with
+the same key returns `409 INCOME_ENTRY_CONFLICT`. Keys are scoped to the session owner and route. Concurrent
+retries serialize under the user lock. Income, confirmation, settlement, revision and the saved response commit
+together, so failed requests can safely retry the same key. Entry types/dates/amounts follow the monthly PUT rules.
 
 ## Shared development
 
