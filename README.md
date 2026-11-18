@@ -60,7 +60,8 @@ CI executes the same build without production secrets.
 
 Current routes: GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
 GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/api/risks/simulate/`,
-GET/PATCH `/api/reports/comparison-settings/`, GET `/api/reports/latest/`, GET `/api/reports/{report_id}/`.
+GET/PATCH `/api/reports/comparison-settings/`, GET `/api/reports/latest/`, GET `/api/reports/{report_id}/`,
+POST `/api/reports/` (persisted admission; calculation worker is a separate feature).
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
@@ -91,6 +92,13 @@ owners' IDs return 404. Withdrawal hides comparison in preserved results. Dates 
 last successful generation, not a pending status update. GET does not create jobs or invoke AI. The detailed
 schemas currently declare monthly principal rate as string in latest and number in detail; endpoint adapters
 preserve those types without modifying storage. See [report reads](docs/REPORT_READ.md).
+
+Report POST captures server-owned input and deduplicates jobs by user, scope, revision and basis month. It returns
+202 for new/pending/running work and 200 for a reused completed job. FAILED retries require `force=true` and a
+60-second wait. Admissions share a per-user hourly limit across scopes, revisions and PRO changes; cached
+responses consume no new attempt. Job/input/attempt commit together and processing listeners must use
+AFTER_COMMIT. This branch implements admission only; no placeholder report or AI call is produced.
+See [generation admission](docs/REPORT_GENERATION.md) for the remaining worker prerequisites.
 
 ## Shared development
 
