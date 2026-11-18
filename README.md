@@ -59,7 +59,8 @@ CI executes the same build without production secrets.
   Repeated identical transitions do not advance revision. Billing is always disabled.
 
 Current routes: GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
-GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/api/risks/simulate/`.
+GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/api/risks/simulate/`,
+GET/PATCH `/api/reports/comparison-settings/`.
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
@@ -75,6 +76,14 @@ income -5%, or a one-time current-month expense of 500,000 won. Direct slider va
 validate an owner-scoped filter; household calculations still include every active loan. The read-only request
 does not advance revision. Missing required query/engine implementations return 503; no runtime fixtures exist.
 See [risk input and projection contracts](docs/RISK_INPUTS.md) for cash, target and uncertainty handling.
+
+Comparison settings are PRO-only. GET returns a default non-consented DEMO configuration without creating
+a database row. PATCH preserves omitted fields and accepts explicit null for age/income categories only when
+the resulting state is non-consented. Consent requires an age group and a user-selected income group from
+1 to 5 (`income_decile` remains the compatibility key). These are not real peer statistics. Withdrawal does not
+delete personal reports. Actual setting changes alone advance revision and set `regeneration_required=true`;
+no report or AI generation starts automatically. Updates lock the user row, recheck PRO and commit settings
+with revision together. V5 application order must be coordinated before integrating these routes.
 
 ## Shared development
 
