@@ -5,9 +5,20 @@ import com.loanrun.common.error.ApiException;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
+import java.time.YearMonth;
+import java.time.format.DateTimeParseException;
 
 final class BudgetInput {
     private BudgetInput() {}
+    static YearMonth month(String value) {
+        try {
+            if (value == null || !value.matches("[0-9]{4}-(0[1-9]|1[0-2])") || value.startsWith("0000"))
+                throw new DateTimeParseException("Invalid", "", 0);
+            return YearMonth.parse(value);
+        } catch (DateTimeParseException ex) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_MONTH", "월 형식을 확인해 주세요.");
+        }
+    }
     static long amount(JsonNode body, String field) {
         JsonNode value = body.get(field);
         if (value == null || !value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() < 0)
