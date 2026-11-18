@@ -6,6 +6,8 @@ import com.loanrun.common.contract.IncomeType;
 import com.loanrun.common.contract.FinanceModels.*;
 import java.sql.Date;
 import java.time.YearMonth;
+import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -46,5 +48,15 @@ public class MonthlyBudgetRepository {
             UPDATE monthly_budgets SET carry_in=?,carry_out=?,reserve_settled=?,settlement_status=?
             WHERE user_id=? AND year_month=?
             """,metrics.carryIn(),metrics.carryOut(),metrics.reserveSettled(),metrics.settlementStatus(),userId,Date.valueOf(month.atDay(1)));
+    }
+    public void saveExpenses(long userId, long budgetId, long fixed, long variable, long discretionary, long savings, Instant now) {
+        jdbc.update("""
+            UPDATE monthly_budgets SET fixed_essential_expenses=?,variable_essential_expenses=?,discretionary_expenses=?,
+                savings=?,expenses_confirmed=TRUE,source='INPUT',updated_at=? WHERE user_id=? AND id=?
+            """, fixed, variable, discretionary, savings, Timestamp.from(now), userId, budgetId);
+    }
+    public void confirmIncome(long userId, long budgetId, Instant now) {
+        jdbc.update("UPDATE monthly_budgets SET income_confirmed=TRUE,updated_at=? WHERE user_id=? AND id=?",
+            Timestamp.from(now), userId, budgetId);
     }
 }
