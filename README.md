@@ -60,7 +60,7 @@ CI executes the same build without production secrets.
 
 Current routes: GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
 GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, GET/PUT `/api/budgets/profile/`,
-GET/PUT `/api/budgets/{year_month}/`.
+GET/PUT `/api/budgets/{year_month}/`, PUT `/api/budgets/{year_month}/allocation/`.
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
@@ -83,7 +83,7 @@ observed months, including confirmed zero months, or the profile estimate when t
 The request may materialize elapsed DEFAULT snapshots and refresh derived settlements under the user lock;
 it does not alter original inputs, long-term plans or revision. Internal budget queries do not write.
 Past corrections recalculate settlements and carry only to the immediately following month.
-Income recording and allocation editing are separate feature changes.
+Income recording is a separate feature change.
 
 Monthly budget PUT accepts only the current KST month and requires all four expense amounts. Income entries
 are preserved when omitted, replaced as a whole when supplied, and deleted with `[]`; explicit null is invalid.
@@ -91,6 +91,15 @@ Existing entry IDs must belong to this user and month. Entry types follow the mo
 be in the current month and no later than today, and amounts must be positive whole won. Saving confirms the
 expenses while preserving the original discretionary limit, then recalculates settlements and advances revision
 once. Failure in validation or dependent projections rolls back the entire change, including income replacement.
+
+Allocation PUT saves a current-month override with a required `Idempotency-Key`. The server validates owned
+active loans, repayment/saving types, grace periods, actual spending floors and the latest allocation capacity
+under the user lock. Already-used money remains counted even if its loan is omitted. Unallocated cash is allowed
+and is not automatically added to reserve. Original principal, long-term plan versions and strategy are unchanged.
+Updated plan views come from Team 1's `PlanPresentationPort`; a missing implementation returns 503. Saving,
+settlement, revision and the stored retry response commit together. FREE responses hide strategy and priority,
+including replay of a response originally saved under PRO. Schema and shared-port prerequisites must be integrated
+before opening this feature's central PR.
 
 ## Shared development
 
