@@ -9,6 +9,6 @@ import java.util.*;
 
 /** Server-captured facts only; nullable incomes are retained through JSON storage. */
 public record ReportInput(long userId,Long loanId,long revision,YearMonth basisMonth,RiskScenarioInput scenarios,
-    List<HistoryMonth> history,Map<YearMonth,Long> actualIncomes,ComparisonSettings comparison,OverallState overall,Performance performance) {
-    public ReportInput {history=List.copyOf(history);actualIncomes=Collections.unmodifiableMap(new LinkedHashMap<>(actualIncomes));}
+    List<HistoryMonth> history,Map<YearMonth,Long> actualIncomes,ComparisonSettings comparison,OverallState overall,Performance performance,List<PlannedAmount> monthlyOverrides) {
+    public ReportInput {history=List.copyOf(history);actualIncomes=Collections.unmodifiableMap(new LinkedHashMap<>(actualIncomes));monthlyOverrides=List.copyOf(monthlyOverrides);}
 }

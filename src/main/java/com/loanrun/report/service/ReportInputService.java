@@ -34,6 +34,6 @@ public class ReportInputService {
         Map<YearMonth,Long> incomes=new LinkedHashMap<>();
         for(int i=6;i>=1;i--){var observed=month.minusMonths(i);incomes.put(observed,budget.financeSnapshot(userId,observed).actualIncome());}
         return new ReportInput(userId,loanId,revision,month,source,h.history(userId,loanId,new DateRange(month.minusMonths(6).atDay(1),month.atDay(1).minusDays(1))),
-            incomes,comparison.snapshot(userId),plan.overallState(userId),p.performance(userId,facts.asOf()));
+            incomes,comparison.snapshot(userId),plan.overallState(userId),p.performance(userId,facts.asOf()),budget.monthlyOverrides(userId,month));
     }
 }

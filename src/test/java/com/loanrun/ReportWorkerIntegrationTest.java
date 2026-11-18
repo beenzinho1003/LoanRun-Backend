@@ -59,7 +59,7 @@ class ReportWorkerIntegrationTest {
         var facts=new RiskInputs(user,month.atDay(17),month,List.of(loan),List.of(new PlanSnapshot(7,true,month.plusYears(1).atDay(25),null,10000,0,0,"EXTRA_AMOUNT",null,month.atDay(1),1)),
             finance,capacity,new DueSummary(month,1000,0,0,1000,0,month.atDay(25),1,0,0,0,0),10000L,0L,BigDecimal.ZERO);
         var source=new RiskScenarioInput(facts,new PaymentSummary(month,0,0,0,0,0,0,0,true,0,0,Map.of()),new SavingSummary(month,0,0,0,0,true,0,Map.of()));
-        return new ReportInput(user,null,0,month,source,List.of(),Map.of(),ComparisonSettings.defaults(),new OverallState(false,"NONE","NONE",null),new Performance(null,null,null));
+        return new ReportInput(user,null,0,month,source,List.of(),Map.of(),ComparisonSettings.defaults(),new OverallState(false,"NONE","NONE",null),new Performance(null,null,null),List.of());
     }
     String encode(ReportInput input){try{return mapper.writeValueAsString(input);}catch(Exception ex){throw new IllegalStateException(ex);}}
     ReportJob create(long user,ReportInput input,boolean publish){return transactions.execute(s->{locks.lock(user);var job=jobs.create(user,null,0,month,encode(input),clock.instant());

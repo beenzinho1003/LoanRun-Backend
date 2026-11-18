@@ -128,4 +128,21 @@ class ReportGenerationIntegrationTest {
         for(String body:List.of("{\"loan_id\":0}","{\"loan_id\":1.5}","{\"force\":null}","{\"force\":\"true\"}","{\"user_id\":1}","{\"force\":true}"))assertThat(generate(c,body).statusCode()).isEqualTo(400);
         assertThat(count("report_jobs",user)).isZero();verifyNoInteractions(history,engine);
     }
+    @Test void capturesExplicitZeroMonthOverrideAsAnImmutableStoredSnapshot()throws Exception{
+        var c=browser();long user=initialize(c,true,true);long revision=revisions.current(user);
+        var overrides=new ArrayList<PlannedAmount>();var zero=new PlannedAmount(7,AllocationType.EXTRA_PAYMENT,0,null);overrides.add(zero);
+        when(budgets.monthlyOverrides(anyLong(),any())).thenReturn(overrides);
+        var response=generate(c,"{}");assertThat(response.statusCode()).isEqualTo(202);long id=json(response).path("data").path("report_id").asLong();
+        var input=mapper.readValue(jobs.owned(user,id).inputPayload(),ReportInput.class);assertThat(input.monthlyOverrides()).containsExactly(zero);
+        overrides.set(0,new PlannedAmount(7,AllocationType.EXTRA_PAYMENT,9999,null));assertThat(input.monthlyOverrides()).containsExactly(zero);
+        assertThat(mapper.readValue(jobs.owned(user,id).inputPayload(),ReportInput.class).monthlyOverrides()).containsExactly(zero);
+        assertThatThrownBy(()->input.monthlyOverrides().add(zero)).isInstanceOf(UnsupportedOperationException.class);
+        verify(budgets).monthlyOverrides(user,month);verifyNoInteractions(engine);assertThat(revisions.current(user)).isEqualTo(revision);
+    }
+    @Test void unavailableMonthOverrideSnapshotRollsBackAdmissionWithoutInventingAnEmptyList()throws Exception{
+        var c=browser();long user=initialize(c,true,true);long revision=revisions.current(user);
+        when(budgets.monthlyOverrides(anyLong(),any())).thenThrow(ApiException.unavailable());assertThat(generate(c,"{}").statusCode()).isEqualTo(503);
+        assertThat(count("report_jobs",user)).isZero();assertThat(count("report_attempts",user)).isZero();assertThat(events.committed).isEmpty();
+        assertThat(revisions.current(user)).isEqualTo(revision);verifyNoInteractions(engine);
+    }
 }
