@@ -60,7 +60,7 @@ CI executes the same build without production secrets.
 
 Current routes: GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
 GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/api/risks/simulate/`,
-GET/PATCH `/api/reports/comparison-settings/`.
+GET/PATCH `/api/reports/comparison-settings/`, GET `/api/reports/latest/`, GET `/api/reports/{report_id}/`.
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
@@ -84,6 +84,13 @@ the resulting state is non-consented. Consent requires an age group and a user-s
 delete personal reports. Actual setting changes alone advance revision and set `regeneration_required=true`;
 no report or AI generation starts automatically. Updates lock the user row, recheck PRO and commit settings
 with revision together. V5 application order must be coordinated before integrating these routes.
+
+Report GETs read stored jobs only and require PRO. Latest returns NOT_GENERATED when absent and hides content
+that is stale or not completed. Detail retains old reports with a stale flag and disabled strategy actions; other
+owners' IDs return 404. Withdrawal hides comparison in preserved results. Dates describe the returned report's
+last successful generation, not a pending status update. GET does not create jobs or invoke AI. The detailed
+schemas currently declare monthly principal rate as string in latest and number in detail; endpoint adapters
+preserve those types without modifying storage. See [report reads](docs/REPORT_READ.md).
 
 ## Shared development
 
