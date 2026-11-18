@@ -3,7 +3,7 @@ package com.loanrun.common.session;
 import com.loanrun.common.contract.CurrentUserProvider;
 import com.loanrun.common.contract.PlanType;
 import com.loanrun.common.error.ApiException;
-import com.loanrun.user.repository.DemoUserRepository;
+import com.loanrun.common.contract.UserAccessPort;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.http.HttpStatus;
@@ -15,11 +15,11 @@ import org.springframework.web.context.annotation.RequestScope;
 public class SessionCurrentUserProvider implements CurrentUserProvider {
     private final HttpServletRequest request;
     private final AnonymousUserService anonymousUsers;
-    private final DemoUserRepository users;
+    private final UserAccessPort access;
     private Long userId;
 
-    public SessionCurrentUserProvider(HttpServletRequest request, AnonymousUserService anonymousUsers, DemoUserRepository users) {
-        this.request = request; this.anonymousUsers = anonymousUsers; this.users = users;
+    public SessionCurrentUserProvider(HttpServletRequest request, AnonymousUserService anonymousUsers, UserAccessPort access) {
+        this.request = request; this.anonymousUsers = anonymousUsers; this.access = access;
     }
 
     @Override
@@ -34,13 +34,11 @@ public class SessionCurrentUserProvider implements CurrentUserProvider {
 
     @Override
     public PlanType currentPlanType() {
-        return users.findById(currentUserId()).orElseThrow(ApiException::unavailable).getPlanType();
+        return access.planType(currentUserId());
     }
 
     @Override
     public void requirePro() {
-        if (currentPlanType() != PlanType.PRO) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "PRO_REQUIRED", "PRO 이용자만 사용할 수 있습니다.");
-        }
+        access.requirePro(currentUserId());
     }
 }
