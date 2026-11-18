@@ -4,6 +4,8 @@ import com.loanrun.common.contract.*;
 import com.loanrun.common.contract.FinanceModels.*;
 import com.loanrun.common.error.ApiException;
 import com.loanrun.risk.domain.RiskInputs;
+import com.loanrun.risk.domain.RiskScenarioInput;
+import com.loanrun.risk.service.RiskPayoffProjection.Projection;
 import com.loanrun.risk.dto.RiskDtos.*;
 import java.math.*;
 import java.time.*;
@@ -15,6 +17,9 @@ import org.springframework.transaction.annotation.*;
 
 @Service
 public class RiskSimulationService {
+    public record Evaluation(Simulation response,LocalDate projectedPayoffDate,Map<Long,LocalDate> loanPayoffDates) {
+        public Evaluation {loanPayoffDates=Map.copyOf(loanPayoffDates);}
+    }
     private final RiskInputService inputs;
     private final RiskRateStress rates;
     private final RiskPayoffProjection payoff;
@@ -25,9 +30,20 @@ public class RiskSimulationService {
     }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Simulation simulate(long userId,ScenarioType type,List<Long> selected) {
-        var facts=inputs.snapshot(userId,YearMonth.now(clock));
-        for(Long id:selected) if(facts.loans().stream().noneMatch(loan->loan.loanId()==id))
+        var captured=capture(userId);
+        for(Long id:selected) if(captured.household().loans().stream().noneMatch(loan->loan.loanId()==id))
             throw new ApiException(HttpStatus.NOT_FOUND,"LOAN_NOT_FOUND","대출을 찾을 수 없습니다.");
+        return evaluate(captured,type).response();
+    }
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public RiskScenarioInput capture(long userId) {
+        var facts=inputs.snapshot(userId,YearMonth.now(clock));
+        var port=loans.getIfAvailable();if(port==null) throw ApiException.unavailable();
+        return new RiskScenarioInput(facts,port.paymentSummary(userId,facts.month()),port.savingSummary(userId,facts.month()));
+    }
+    /** No persistence or session reads here. Internal callers must validate access before capturing input. */
+    public Evaluation evaluate(RiskScenarioInput captured,ScenarioType type) {
+        var facts=captured.household();
         var probe=rates.probe(facts);
         long basic=Math.subtractExact(Math.addExact(facts.due().scheduledCash(),facts.due().previousOutstandingCash()),facts.due().savingsUsedForDue());
         long burden=type==ScenarioType.RATE_UP?Math.addExact(basic,probe.basicBurdenDelta(BigDecimal.ONE)):basic;
@@ -44,32 +60,31 @@ public class RiskSimulationService {
         Long recurring=shortfall(type==ScenarioType.EXPENSE_UP?originalCash:available);
         var coverage=coverage(facts.finance().emergencyFund(),recurring);
         Long oneTime=available==null?null:type==ScenarioType.EXPENSE_UP?Math.subtractExact(shortfall(available),recurring):0L;
-        var feasibility=feasibility(facts,type,available);
+        var feasibility=feasibility(captured,type,available);
         List<String> warnings=new ArrayList<>(feasibility.warnings());
         if(type==ScenarioType.RATE_UP&&!probe.hasVariableLoans()) warnings.add("고정금리 대출에는 금리 상승폭이 적용되지 않습니다.");
-        return new Simulation(new Baseline(originalIncome,basic,originalCash,baseline.level(),baseline.score()),
-            new Scenario(income,burden,available,scenario.level(),feasibility.level(),scenario.score(),extraExpense,coverage.months(),coverage.status(),oneTime,
+        var response=new Simulation(new Baseline(originalIncome,basic,originalCash,baseline.level(),baseline.score()),
+            new Scenario(income,burden,available,scenario.level(),feasibility.feasibility(),scenario.score(),extraExpense,coverage.months(),coverage.status(),oneTime,
                 type==ScenarioType.RATE_UP?1:0,type==ScenarioType.INCOME_DOWN?-5:0),
             new Delta(originalIncome==null?null:Math.subtractExact(income,originalIncome),Math.subtractExact(burden,basic),
                 available==null||originalCash==null?null:Math.subtractExact(available,originalCash)),
             List.copyOf(new LinkedHashSet<>(warnings)),
             probe.thresholds(),incomeThresholds(facts),expenseThresholds(facts),type);
+        return new Evaluation(response,feasibility.projectedPayoffDate(),feasibility.loanPayoffDates());
     }
     private RiskMath.Assessment assessment(RiskInputs s,Long income,Long cash,long burden,Long afterRate){
         return RiskMath.assess(income,cash,burden,s.finance().actualDiscretionaryExpenses(),s.finance().discretionaryLimit(),s.variableExposurePct(),
             s.loans().stream().anyMatch(loan->loan.rateType()==RateType.VARIABLE),afterRate,s.monthlyTarget(),!s.loans().isEmpty());
     }
-    private record Feasibility(String level,List<String> warnings){}
-    private Feasibility feasibility(RiskInputs s,ScenarioType type,Long available){
-        if(available==null||s.monthlyTarget()==null||s.loans().isEmpty()) return new Feasibility(null,List.of());
-        if(available<0||(s.requiredSaving()!=null&&available<s.requiredSaving())) return new Feasibility("LOW",List.of());
-        if(available<s.monthlyTarget()) return new Feasibility("MEDIUM",List.of());
-        var port=loans.getIfAvailable();if(port==null) throw ApiException.unavailable();
-        var amounts=RiskScenarioAmounts.build(s,port.paymentSummary(s.userId(),s.month()),port.savingSummary(s.userId(),s.month()));
+    private Projection feasibility(RiskScenarioInput captured,ScenarioType type,Long available){
+        var s=captured.household();
+        if(available==null||s.monthlyTarget()==null||s.loans().isEmpty()) return new Projection(null,null,Map.of(),List.of());
+        if(available<0||(s.requiredSaving()!=null&&available<s.requiredSaving())) return new Projection("LOW",null,Map.of(),List.of());
+        if(available<s.monthlyTarget()) return new Projection("MEDIUM",null,Map.of(),List.of());
+        var amounts=RiskScenarioAmounts.build(s,captured.payments(),captured.savings());
         Map<Long,BigDecimal> changed=new HashMap<>();
         if(type==ScenarioType.RATE_UP) for(var loan:s.loans()) if(loan.rateType()==RateType.VARIABLE) changed.put(loan.loanId(),loan.annualRate().add(BigDecimal.ONE));
-        var result=payoff.project(s,amounts,changed);
-        return new Feasibility(result.feasibility(),result.warnings());
+        return payoff.project(s,amounts,changed);
     }
     private long lostIncome(long income,int steps){return BigDecimal.valueOf(income).multiply(BigDecimal.valueOf(steps)).divide(BigDecimal.valueOf(10000),0,RoundingMode.HALF_UP).longValueExact();}
     private Thresholds incomeThresholds(RiskInputs s){

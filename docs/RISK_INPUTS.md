@@ -50,3 +50,9 @@ thresholds use pre-carry cash, with 0.01% income steps and one-won expense steps
 Emergency coverage divides known emergency funds by recurring shortfall only. A one-time expense shortage is
 separate; it does not become a fictitious monthly deficit. Engine projection warnings are retained. API tests
 use controlled query/engine fixtures for adapter behavior; actual Team 1 financial-engine integration is pending.
+
+`RiskSimulationService.capture` includes the payment/saving ledgers in an immutable `RiskScenarioInput` under
+the same read snapshot. `evaluate` uses only that captured input and the pure engine; it performs no session or
+financial persistence reads. It also returns known payoff dates for later report composition while the existing
+HTTP response remains unchanged. Internal callers must authorize the user/job before capture and check stored
+revision/month before publishing a result. This separation does not start a worker or an external API call.

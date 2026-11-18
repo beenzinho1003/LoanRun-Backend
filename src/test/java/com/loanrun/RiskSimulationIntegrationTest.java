@@ -34,6 +34,7 @@ class RiskSimulationIntegrationTest {
     @Container static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:16.16-bookworm");
     @DynamicPropertySource static void database(DynamicPropertyRegistry r){r.add("spring.datasource.url",DB::getJdbcUrl);r.add("spring.datasource.username",DB::getUsername);r.add("spring.datasource.password",DB::getPassword);}
     @LocalServerPort int port;@Autowired ObjectMapper mapper;@Autowired RevisionPort revisions;@Autowired JdbcTemplate jdbc;
+    @Autowired com.loanrun.risk.service.RiskSimulationService risk;
     @MockitoBean LoanQueryPort loans;@MockitoBean PlanQueryPort plans;@MockitoBean BudgetQueryPort budgets;@MockitoBean RepaymentEngine engine;
     final AtomicLong owner=new AtomicLong();static final YearMonth MONTH=YearMonth.of(2026,11);
     LoanTerms loan(long id,RateType rate){return new LoanTerms(id,owner.get(),"가상",LoanType.CREDIT,500000,500000,MONTH.atDay(17),BigDecimal.valueOf(6),rate,
@@ -117,5 +118,17 @@ class RiskSimulationIntegrationTest {
         when(loans.activeLoans(eq(id),any())).thenReturn(List.of(loan(1,RateType.FIXED),loan(2,RateType.FIXED)));when(budgets.capacity(id,MONTH)).thenReturn(capacity(200000L));
         var rate=json(simulate(c,"RATE_UP")).path("data");assertThat(rate.path("scenario").path("available_cash").longValue()).isEqualTo(200000);
         assertThat(rate.path("rate_thresholds").path("basic_at_risk_from").isNull()).isTrue();assertThat(rate.path("warnings").toString()).contains("고정금리");
+    }
+    @Test void capturedEvaluationRetainsLedgerFactsAndPayoffDatesAfterLiveSourcesChange()throws Exception{
+        var c=browser();long id=initialize(c,true,true),revision=revisions.current(id);var captured=risk.capture(id);
+        when(loans.paymentSummary(id,MONTH)).thenThrow(ApiException.unavailable());
+        when(budgets.capacity(id,MONTH)).thenThrow(ApiException.unavailable());
+        var restored=mapper.readValue(mapper.writeValueAsString(captured),com.loanrun.risk.domain.RiskScenarioInput.class);
+        var result=risk.evaluate(restored,com.loanrun.risk.dto.RiskDtos.ScenarioType.CURRENT);
+        assertThat(result.response().scenario().payoffFeasibility()).isEqualTo("HIGH");
+        assertThat(result.projectedPayoffDate()).isEqualTo(MONTH.plusMonths(11).atDay(25));
+        assertThat(result.loanPayoffDates()).hasSize(2);assertThat(revisions.current(id)).isEqualTo(revision);
+        assertThatThrownBy(()->captured.payments().extraCashByLoan().clear()).isInstanceOf(UnsupportedOperationException.class);
+        assertThat(simulate(c,"CURRENT").statusCode()).isEqualTo(503);
     }
 }
