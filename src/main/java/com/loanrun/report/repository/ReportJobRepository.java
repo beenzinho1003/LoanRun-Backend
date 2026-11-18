@@ -28,6 +28,7 @@ public class ReportJobRepository {
     public Optional<ReportJob> current(long userId,Long loanId,long revision,YearMonth month){return jdbc.query(
         "SELECT * FROM report_jobs WHERE user_id=? AND scope_key=? AND data_revision=? AND basis_month=?",mapper,userId,scope(loanId),revision,java.sql.Date.valueOf(month.atDay(1))).stream().findFirst();}
     public Optional<ReportJob> latest(long userId,Long loanId){return jdbc.query("SELECT * FROM report_jobs WHERE user_id=? AND scope_key=? ORDER BY id DESC LIMIT 1",mapper,userId,scope(loanId)).stream().findFirst();}
+    public Optional<ReportJob> latestCompleted(long userId){return jdbc.query("SELECT * FROM report_jobs WHERE user_id=? AND scope_key='HOUSEHOLD' AND status='COMPLETED' ORDER BY id DESC LIMIT 1",mapper,userId).stream().findFirst();}
     public List<ReportJob> expiredBefore(Instant cutoff,int limit){return jdbc.query("SELECT * FROM report_jobs WHERE status IN ('PENDING','RUNNING') AND updated_at<? ORDER BY user_id,id LIMIT ?",
         mapper,Timestamp.from(cutoff),limit);}
     @Transactional(propagation=Propagation.MANDATORY)

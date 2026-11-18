@@ -61,7 +61,8 @@ CI executes the same build without production secrets.
 Current routes: GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
 GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/api/risks/simulate/`,
 GET/PATCH `/api/reports/comparison-settings/`, GET `/api/reports/latest/`, GET `/api/reports/{report_id}/`,
-POST `/api/reports/` (persisted admission; calculation worker is a separate feature).
+POST `/api/reports/` (persisted admission; calculation adapter remains a separate feature),
+GET `/api/reports/strategy/` (stored snapshot and current candidate validation).
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
