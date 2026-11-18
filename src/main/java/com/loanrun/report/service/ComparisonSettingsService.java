@@ -7,8 +7,6 @@ import com.loanrun.common.validation.JsonPatch;
 import com.loanrun.report.dto.ComparisonSettings;
 import com.loanrun.report.dto.ComparisonSettings.*;
 import com.loanrun.report.repository.ComparisonSettingsRepository;
-import com.loanrun.user.domain.DemoUser;
-import com.loanrun.user.repository.DemoUserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,16 +14,17 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ComparisonSettingsService {
     private final ComparisonSettingsRepository settings;
-    private final DemoUserRepository users;
+    private final UserAccessPort access;
+    private final UserMutationLock locks;
     private final RevisionPort revisions;
-    public ComparisonSettingsService(ComparisonSettingsRepository settings,DemoUserRepository users,RevisionPort revisions){this.settings=settings;this.users=users;this.revisions=revisions;}
+    public ComparisonSettingsService(ComparisonSettingsRepository settings,UserAccessPort access,UserMutationLock locks,RevisionPort revisions){this.settings=settings;this.access=access;this.locks=locks;this.revisions=revisions;}
     /** Internal report snapshots must check their own job/user access before reading. */
     @Transactional(readOnly=true) public ComparisonSettings snapshot(long userId){return settings.find(userId).orElseGet(ComparisonSettings::defaults);}
     @Transactional(readOnly=true) public ComparisonSettings get(long userId){
-        requirePro(users.findById(userId).orElseThrow(ApiException::unavailable));return snapshot(userId);
+        access.requirePro(userId);return snapshot(userId);
     }
     @Transactional public Updated patch(long userId,JsonNode body){
-        requirePro(users.findLocked(userId).orElseThrow(ApiException::unavailable));
+        locks.lock(userId);access.requirePro(userId);
         try {
             JsonPatch.fields(body,"consented","age_group","income_decile");var old=snapshot(userId);
             boolean consent=body.has("consented")?JsonPatch.bool(body,"consented"):old.consented();
@@ -47,5 +46,4 @@ public class ComparisonSettingsService {
             throw new ApiException(HttpStatus.BAD_REQUEST,"COMPARISON_SETTINGS_INVALID","또래 비교 기준을 확인해 주세요.",ex.errors());
         }
     }
-    private void requirePro(DemoUser user){if(user.getPlanType()!=PlanType.PRO) throw new ApiException(HttpStatus.FORBIDDEN,"PRO_REQUIRED","PRO 이용자만 사용할 수 있습니다.");}
 }
