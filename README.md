@@ -101,6 +101,10 @@ Dashboard consumer: GET `/api/dashboard/` composes selected ledger projections w
 server-gated report status. The proposed source provider is still an integration dependency; see
 [dashboard behavior and verification limits](docs/DASHBOARD.md).
 
+Risk detail consumer: GET `/api/risks/` supports PRO household assessment and selected detail. Preserved
+finance changes and frozen historical assessments still require persistence integration; see
+[risk detail behavior and remaining sources](docs/RISK_DETAIL.md).
+
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
 Only the session owner's loans and preserved payments are exported, including historical transactions for deleted loans.
 Month filters apply to payments. The CSV uses UTF-8 BOM, CRLF, quoted cells and spreadsheet formula protection.
