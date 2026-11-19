@@ -98,6 +98,7 @@ source ports require integration), and GET `/api/reports/strategy/` (stored snap
 Current routes: GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
 GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, GET/PUT `/api/budgets/profile/`,
 GET/PUT `/api/budgets/{year_month}/`, PUT `/api/budgets/{year_month}/allocation/`.
+GET/PUT `/api/budgets/{year_month}/`, POST `/api/income-entries/`.
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Dashboard consumer: GET `/api/dashboard/` composes selected ledger projections with household risk and
@@ -173,6 +174,11 @@ Updated plan views come from Team 1's `PlanPresentationPort`; a missing implemen
 settlement, revision and the stored retry response commit together. FREE responses hide strategy and priority,
 including replay of a response originally saved under PRO. Schema and shared-port prerequisites must be integrated
 before opening this feature's central PR.
+Income POST records one current-month entry with a required `Idempotency-Key` (1–128 characters).
+An identical retry returns the original 201 response and ID without another revision; a different body with
+the same key returns `409 INCOME_ENTRY_CONFLICT`. Keys are scoped to the session owner and route. Concurrent
+retries serialize under the user lock. Income, confirmation, settlement, revision and the saved response commit
+together, so failed requests can safely retry the same key. Entry types/dates/amounts follow the monthly PUT rules.
 
 ## Shared development
 
