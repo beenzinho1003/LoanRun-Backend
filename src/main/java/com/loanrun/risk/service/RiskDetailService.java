@@ -1,6 +1,8 @@
 package com.loanrun.risk.service;
 
 import com.loanrun.risk.dto.RiskDtos.*;
+import com.loanrun.risk.domain.RiskScenarioInput;
+import com.loanrun.risk.service.RiskDetailHistorySource.Recorded;
 import java.math.BigDecimal;
 import java.time.*;
 import org.springframework.stereotype.Service;
@@ -11,8 +13,12 @@ public class RiskDetailService {
     public RiskDetailService(RiskDetailInputService inputs,RiskSimulationService simulations,RiskRateStress rates){this.inputs=inputs;this.simulations=simulations;this.rates=rates;}
     public Detail read(long userId,Long selected,YearMonth month){
         var captured=inputs.capture(userId,selected,month);if(captured.frozen()!=null)return captured.frozen();
-        var facts=captured.current().household();var finance=facts.finance();
-        var simulation=simulations.evaluate(captured.current(),ScenarioType.CURRENT).response();
+        return calculate(captured.current(),captured.history(),selected);
+    }
+    /** Evaluates immutable sources; caller captures ownership/confirmed history before invoking. */
+    public Detail calculate(RiskScenarioInput captured,Recorded recorded,Long selected){
+        var facts=captured.household();var finance=facts.finance();var month=facts.month();
+        var simulation=simulations.evaluate(captured,ScenarioType.CURRENT).response();
         long basic=Math.subtractExact(Math.addExact(facts.due().scheduledCash(),facts.due().previousOutstandingCash()),facts.due().savingsUsedForDue());
         var probe=rates.probe(facts);
         var assessment=RiskMath.assess(finance.planningIncome(),facts.capacity().availableCash(),basic,
@@ -22,7 +28,7 @@ public class RiskDetailService {
             RiskMath.display(RiskMath.ratio(basic,finance.planningIncome())),facts.capacity().availableCash(),RiskMath.display(facts.variableExposurePct()),
             finance.actualDiscretionaryExpenses(),finance.discretionaryLimit(),RiskMath.display(RiskMath.ratio(finance.actualDiscretionaryExpenses(),finance.discretionaryLimit())));
         var upcoming=RiskDetailPresentation.events(facts.loans(),selected,facts.asOf());
-        var history=RiskDetailPresentation.history(captured.history(),selected,month);
+        var history=RiskDetailPresentation.history(recorded,selected,month);
         var current=simulation.scenario();
         return new Detail(assessment.level(),indicators,upcoming,history.events(),assessment.dataStatus(),assessment.checks(),simulation.rateThresholds(),
             history.changes(),true,history.summary(),simulation.incomeThresholds(),simulation.expenseThresholds(),assessment.score(),current.emergencyCoverageMonths(),
