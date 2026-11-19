@@ -10,4 +10,5 @@ public final class RiskHistoryModels {
         Long beforeAmount,Long afterAmount,boolean cashImpactKnown,Instant createdAt){}
     public record Assessment(long userId,YearMonth month,long revision,LocalDate asOf,String inputHash,
         String householdPayload,String loanPayloads,Instant createdAt){}
+    public record InputVersion(long userId,long revision,Origin origin,YearMonth month,String beforePayload,String afterPayload,Instant createdAt){}
 }

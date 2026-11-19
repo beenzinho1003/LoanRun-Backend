@@ -82,4 +82,12 @@ class RiskHistoryRepositoryTest {
         tx.executeWithoutResult(s->history.finishRequest(id,month,1));assertThat(history.pending(id,month)).isTrue();
         tx.executeWithoutResult(s->history.finishRequest(id,month,2));assertThat(history.pending(id,month)).isFalse();
     }
+    @Test void inputVersionsAreOwnerScopedImmutableAndReplayChecksTheExactSourceJson(){
+        long id=user(),other=user();var input=new InputVersion(id,1,Origin.PROFILE,month,null,"{\"income\":0,\"payday\":null}",now);
+        tx.executeWithoutResult(s->history.appendInput(input));
+        tx.executeWithoutResult(s->history.appendInput(new InputVersion(id,1,Origin.PROFILE,month,null,"{\"payday\":null,\"income\":0}",now.plusSeconds(1))));
+        assertThat(history.input(other,1,Origin.PROFILE)).isEmpty();assertThat(history.input(id,1,Origin.PROFILE).orElseThrow().createdAt()).isEqualTo(now);
+        assertThatThrownBy(()->tx.executeWithoutResult(s->history.appendInput(new InputVersion(id,1,Origin.PROFILE,month,null,"{\"income\":1}",now)))).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->jdbc.update("DELETE FROM finance_input_versions WHERE user_id=?",id)).hasMessageContaining("append-only");
+    }
 }

@@ -17,14 +17,17 @@ import org.springframework.transaction.annotation.*;
 @ConditionalOnProperty(name="loanrun.risk-history.enabled",havingValue="true")
 @Transactional(propagation=Propagation.MANDATORY)
 public class FinanceChangeRecorder {
-    public record Amounts(Long income,Long expenses){}
+    public record Amounts(Long income,Long expenses,String payload){}
     private final JdbcTemplate jdbc;private final RiskHistoryRepository history;private final UserMutationLock locks;private final RevisionPort revisions;private final Clock clock;
     public FinanceChangeRecorder(JdbcTemplate jdbc,RiskHistoryRepository history,UserMutationLock locks,RevisionPort revisions,Clock clock){
         this.jdbc=jdbc;this.history=history;this.locks=locks;this.revisions=revisions;this.clock=clock;
     }
     public Amounts capture(long userId,YearMonth month){
         return jdbc.query("""
-            SELECT b.*,COALESCE((SELECT sum(e.amount) FROM income_entries e WHERE e.user_id=b.user_id AND e.budget_id=b.id),0) AS extra
+            SELECT b.*,COALESCE((SELECT sum(e.amount) FROM income_entries e WHERE e.user_id=b.user_id AND e.budget_id=b.id),0) AS extra,
+                jsonb_build_object('profile',(SELECT to_jsonb(p) FROM finance_profiles p WHERE p.user_id=b.user_id),
+                    'budget',to_jsonb(b),'income_entries',COALESCE((SELECT jsonb_agg(to_jsonb(e) ORDER BY e.received_date,e.id)
+                        FROM income_entries e WHERE e.user_id=b.user_id AND e.budget_id=b.id),'[]'::jsonb)) AS source_payload
             FROM monthly_budgets b WHERE b.user_id=? AND b.year_month=?
             """,(r,n)->{
                 long income=r.getLong("expected_income");
@@ -40,14 +43,16 @@ public class FinanceChangeRecorder {
                 }
                 long expenses=Math.addExact(Math.addExact(r.getLong("fixed_essential_expenses"),r.getLong("variable_essential_expenses")),
                     Math.addExact(r.getLong("discretionary_expenses"),r.getLong("savings")));
-                return new Amounts(income,expenses);
+                return new Amounts(income,expenses,r.getString("source_payload"));
             },userId,java.sql.Date.valueOf(month.atDay(1))).stream().findFirst().orElse(null);
     }
     public void record(long userId,long revision,Origin origin,YearMonth month,Amounts before,Amounts after){
         locks.lock(userId);
         if(revisions.current(userId)!=revision)throw ApiException.unavailable();
         if(!month.equals(YearMonth.now(clock)))throw new IllegalArgumentException("Finance input changes must belong to the current month");
-        if(before==null||after==null)return; // Initial source registration is a baseline, not an invented change.
+        if(after==null)throw ApiException.unavailable();
+        history.appendInput(new InputVersion(userId,revision,origin,month,before==null?null:before.payload(),after.payload(),clock.instant()));
+        if(before==null)return; // Preserve the first input version without inventing a cash change.
         append(userId,revision,origin,month,Kind.INCOME,before.income(),after.income());
         append(userId,revision,origin,month,Kind.EXPENSE,before.expenses(),after.expenses());
     }

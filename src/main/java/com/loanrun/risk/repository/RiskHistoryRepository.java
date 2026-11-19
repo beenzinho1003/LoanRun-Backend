@@ -21,6 +21,19 @@ public class RiskHistoryRepository {
         r.getObject("before_amount",Long.class),r.getObject("after_amount",Long.class),r.getBoolean("cash_impact_known"),r.getTimestamp("created_at").toInstant());
     private static final RowMapper<Assessment> ASSESSMENTS=(r,n)->new Assessment(r.getLong("user_id"),YearMonth.from(r.getDate("basis_month").toLocalDate()),
         r.getLong("data_revision"),r.getDate("as_of").toLocalDate(),r.getString("input_hash"),r.getString("household_payload"),r.getString("loan_payloads"),r.getTimestamp("created_at").toInstant());
+    private static final RowMapper<InputVersion> INPUTS=(r,n)->new InputVersion(r.getLong("user_id"),r.getLong("data_revision"),Origin.valueOf(r.getString("origin")),
+        YearMonth.from(r.getDate("basis_month").toLocalDate()),r.getString("before_payload"),r.getString("after_payload"),r.getTimestamp("created_at").toInstant());
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void appendInput(InputVersion input){
+        int inserted=jdbc.update("""
+            INSERT INTO finance_input_versions(user_id,data_revision,origin,basis_month,before_payload,after_payload,created_at)
+            VALUES (?,?,?,?,?::jsonb,?::jsonb,?) ON CONFLICT(user_id,data_revision,origin) DO NOTHING
+            """,input.userId(),input.revision(),input.origin().name(),date(input.month()),input.beforePayload(),input.afterPayload(),Timestamp.from(input.createdAt()));
+        if(inserted==0){var saved=input(input.userId(),input.revision(),input.origin()).orElseThrow(ApiException::unavailable);
+            if(!saved.month().equals(input.month())||!sameJson(saved.beforePayload(),input.beforePayload())||!sameJson(saved.afterPayload(),input.afterPayload()))throw conflict();}
+    }
+    public Optional<InputVersion> input(long userId,long revision,Origin origin){return jdbc.query(
+        "SELECT * FROM finance_input_versions WHERE user_id=? AND data_revision=? AND origin=?",INPUTS,userId,revision,origin.name()).stream().findFirst();}
     @Transactional(propagation=Propagation.MANDATORY)
     public void append(Change change){
         int inserted=jdbc.update("""
@@ -68,6 +81,6 @@ public class RiskHistoryRepository {
         "SELECT DISTINCT basis_month FROM risk_assessment_versions WHERE user_id=? AND basis_month>=? AND basis_month<=?",
         (r,n)->YearMonth.from(r.getDate(1).toLocalDate()),userId,date(start),date(end)));}
     private static java.sql.Date date(YearMonth month){return java.sql.Date.valueOf(month.atDay(1));}
-    private boolean sameJson(String first,String second){try{return json.readTree(first).equals(json.readTree(second));}catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new IllegalArgumentException("Invalid assessment JSON");}}
+    private boolean sameJson(String first,String second){if(first==null||second==null)return first==null&&second==null;try{return json.readTree(first).equals(json.readTree(second));}catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new IllegalArgumentException("Invalid assessment JSON");}}
     private static ApiException conflict(){return new ApiException(HttpStatus.CONFLICT,"RISK_HISTORY_CONFLICT","저장된 위험 이력과 요청이 일치하지 않습니다.");}
 }

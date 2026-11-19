@@ -59,6 +59,7 @@ class FinanceHistoryIntegrationTest {
     List<Change> changes(long id){return history.changes(id,MONTH.atDay(1),MONTH.atEndOfMonth());}
     @Test void initialProfileIsBaselineAndChangesAreImmutableSameRevisionOwnerScopedAndNoopAddsNoEvent()throws Exception{
         var c=browser();long id=initialize(c);assertThat(changes(id)).isEmpty();
+        assertThat(history.input(id,revisions.current(id),Origin.PROFILE).orElseThrow().beforePayload()).isNull();
         var response=call(c,"PUT","/api/budgets/profile/",null,profile(3200000,0));assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
         var rows=changes(id);assertThat(rows).hasSize(2);assertThat(rows).allMatch(row->row.revision()==revisions.current(id)&&row.origin()==Origin.PROFILE);
         assertThat(rows.stream().filter(row->row.kind()==Kind.EXPENSE).findFirst().orElseThrow().afterAmount()).isZero();
@@ -72,6 +73,9 @@ class FinanceHistoryIntegrationTest {
         var rows=changes(id);assertThat(rows).hasSize(2);assertThat(rows).allMatch(row->row.origin()==Origin.MONTHLY_BUDGET&&row.revision()==revisions.current(id));
         assertThat(rows.stream().filter(row->row.kind()==Kind.INCOME).findFirst().orElseThrow().afterAmount()).isEqualTo(3200000);
         call(c,"PUT","/api/budgets/profile/",null,profile(9000000,9000000));assertThat(changes(id)).isEqualTo(rows); // INPUT month is preserved.
+        var source=mapper.readTree(history.input(id,revisions.current(id),Origin.PROFILE).orElseThrow().afterPayload());
+        assertThat(source.path("profile").path("monthly_income").longValue()).isEqualTo(9000000);
+        assertThat(source.path("budget").path("expected_income").longValue()).isEqualTo(3000000);
     }
     @Test void incomeReplayAddsOneEventAndJournalFailureRollsBackEntryRevisionAndIdempotency()throws Exception{
         var c=browser();long id=initialize(c);String body="{\"entry_type\":\"EXTRA\",\"received_date\":\"2026-11-15\",\"amount\":200000}";
@@ -82,6 +86,7 @@ class FinanceHistoryIntegrationTest {
         doThrow(ApiException.unavailable()).when(target).append(any(Change.class));
         var failed=call(c,"POST","/api/income-entries/","failed",body);assertThat(failed.statusCode()).isEqualTo(503);
         assertThat(revisions.current(id)).isEqualTo(revision);assertThat(changes(id)).hasSize(1);
+        assertThat(history.input(id,revision+1,Origin.INCOME_ENTRY)).isEmpty();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM income_entries WHERE user_id=?",Long.class,id)).isEqualTo(1);
         doCallRealMethod().when(target).append(any(Change.class));
         assertThat(call(c,"POST","/api/income-entries/","failed",body).statusCode()).isEqualTo(201);assertThat(changes(id)).hasSize(2);
@@ -102,5 +107,19 @@ class FinanceHistoryIntegrationTest {
         }
         var captured=tx.execute(s->recorder.capture(id,MONTH));assertThat(captured.income()).isEqualTo(333334);
         assertThat(budgetQuery.financeSnapshot(id,MONTH).planningIncome()).isEqualTo(captured.income());
+    }
+    @Test void sameTotalWithCorrectedIncomeDatePreservesBothInputVersionsWithoutInventingACashChange()throws Exception{
+        var c=browser();long id=initialize(c);
+        var body=(com.fasterxml.jackson.databind.node.ObjectNode)mapper.readTree("{\"fixed_essential_expenses\":1000000,\"variable_essential_expenses\":0,\"discretionary_expenses\":0,\"savings\":0,\"income_entries\":[{\"entry_type\":\"EXTRA\",\"received_date\":\"2026-11-15\",\"amount\":200000}]}");
+        var response=call(c,"PUT","/api/budgets/2026-11/",null,body.toString());assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+        long firstRevision=revisions.current(id),entryId=json(response).path("data").path("income_entries").get(0).path("income_entry_id").longValue();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)body.withArray("income_entries").get(0)).put("income_entry_id",entryId).put("received_date","2026-11-16");
+        response=call(c,"PUT","/api/budgets/2026-11/",null,body.toString());assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+        var old=mapper.readTree(history.input(id,firstRevision,Origin.MONTHLY_BUDGET).orElseThrow().afterPayload());
+        var latest=history.input(id,revisions.current(id),Origin.MONTHLY_BUDGET).orElseThrow();
+        assertThat(old.path("income_entries").get(0).path("received_date").asText()).isEqualTo("2026-11-15");
+        assertThat(mapper.readTree(latest.beforePayload()).path("income_entries")).isEqualTo(old.path("income_entries"));
+        assertThat(mapper.readTree(latest.afterPayload()).path("income_entries").get(0).path("received_date").asText()).isEqualTo("2026-11-16");
+        assertThat(changes(id)).hasSize(1); // Only the first addition changed planned income.
     }
 }
