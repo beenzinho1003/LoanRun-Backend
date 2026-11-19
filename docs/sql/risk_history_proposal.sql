@@ -31,6 +31,15 @@ CREATE TABLE risk_assessment_versions (
     UNIQUE(user_id,basis_month,data_revision)
 );
 
+-- Mutable derived-work marker. Old immutable results stay stored but cannot be served while dirty.
+CREATE TABLE risk_assessment_requests (
+    user_id BIGINT NOT NULL REFERENCES demo_users(id),
+    basis_month DATE NOT NULL CHECK (EXTRACT(DAY FROM basis_month)=1),
+    data_revision BIGINT NOT NULL CHECK (data_revision >= 0),
+    pending BOOLEAN NOT NULL DEFAULT TRUE,
+    PRIMARY KEY(user_id,basis_month)
+);
+
 CREATE FUNCTION reject_risk_history_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     RAISE EXCEPTION 'Risk history is append-only';

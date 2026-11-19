@@ -74,4 +74,12 @@ class RiskHistoryRepositoryTest {
         tx.executeWithoutResult(s->history.append(change(id,1,1L,2L)));
         assertThatThrownBy(()->jdbc.update("DELETE FROM finance_change_events WHERE user_id=?",id)).hasMessageContaining("append-only");
     }
+    @Test void invalidationIsTransactionalOwnerScopedAndOlderCompletionCannotClearNewerRequest(){
+        long id=user(),other=user();
+        assertThatThrownBy(()->tx.executeWithoutResult(s->{history.request(id,month,1);throw new IllegalStateException("rollback");})).isInstanceOf(IllegalStateException.class);
+        assertThat(history.pending(id,month)).isFalse();
+        tx.executeWithoutResult(s->history.request(id,month,2));assertThat(history.pending(id,month)).isTrue();assertThat(history.pending(other,month)).isFalse();
+        tx.executeWithoutResult(s->history.finishRequest(id,month,1));assertThat(history.pending(id,month)).isTrue();
+        tx.executeWithoutResult(s->history.finishRequest(id,month,2));assertThat(history.pending(id,month)).isFalse();
+    }
 }

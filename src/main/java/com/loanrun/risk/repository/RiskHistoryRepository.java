@@ -55,6 +55,15 @@ public class RiskHistoryRepository {
         "SELECT * FROM finance_change_events WHERE user_id=? AND event_date>=? AND event_date<=? ORDER BY event_date,id",CHANGES,userId,java.sql.Date.valueOf(start),java.sql.Date.valueOf(end)));}
     public Optional<Assessment> latest(long userId,YearMonth month){return jdbc.query(
         "SELECT * FROM risk_assessment_versions WHERE user_id=? AND basis_month=? ORDER BY data_revision DESC LIMIT 1",ASSESSMENTS,userId,date(month)).stream().findFirst();}
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void request(long userId,YearMonth month,long revision){jdbc.update("""
+        INSERT INTO risk_assessment_requests(user_id,basis_month,data_revision,pending) VALUES (?,?,?,TRUE)
+        ON CONFLICT(user_id,basis_month) DO UPDATE SET data_revision=GREATEST(risk_assessment_requests.data_revision,EXCLUDED.data_revision),pending=TRUE
+        """,userId,date(month),revision);}
+    public boolean pending(long userId,YearMonth month){return Boolean.TRUE.equals(jdbc.query(
+        "SELECT pending FROM risk_assessment_requests WHERE user_id=? AND basis_month=?",(r,n)->r.getBoolean(1),userId,date(month)).stream().findFirst().orElse(false));}
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void finishRequest(long userId,YearMonth month,long revision){jdbc.update("UPDATE risk_assessment_requests SET pending=FALSE WHERE user_id=? AND basis_month=? AND data_revision<=?",userId,date(month),revision);}
     public Set<YearMonth> confirmedMonths(long userId,YearMonth start,YearMonth end){return Set.copyOf(jdbc.query(
         "SELECT DISTINCT basis_month FROM risk_assessment_versions WHERE user_id=? AND basis_month>=? AND basis_month<=?",
         (r,n)->YearMonth.from(r.getDate(1).toLocalDate()),userId,date(start),date(end)));}
