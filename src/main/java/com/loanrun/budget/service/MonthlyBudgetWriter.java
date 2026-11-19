@@ -13,6 +13,8 @@ import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.ObjectProvider;
+import com.loanrun.risk.domain.RiskHistoryModels.Origin;
 
 @Service
 public class MonthlyBudgetWriter {
@@ -24,10 +26,12 @@ public class MonthlyBudgetWriter {
     private final BudgetRecalculationPort recalculation;
     private final RevisionPort revisions;
     private final Clock clock;
+    private final ObjectProvider<FinanceChangeRecorder> history;
     public MonthlyBudgetWriter(MonthlyBudgetRepository budgets, IncomeEntryRepository entries, FinanceProfileService profiles,
-            MonthlyBudgetReader reader, UserMutationLock locks, BudgetRecalculationPort recalculation, RevisionPort revisions, Clock clock) {
+            MonthlyBudgetReader reader, UserMutationLock locks, BudgetRecalculationPort recalculation, RevisionPort revisions, Clock clock,ObjectProvider<FinanceChangeRecorder> history) {
         this.budgets=budgets; this.entries=entries; this.profiles=profiles; this.reader=reader;
         this.locks=locks; this.recalculation=recalculation; this.revisions=revisions; this.clock=clock;
+        this.history=history;
     }
     @Transactional
     public Monthly save(long userId, String monthText, JsonNode body) {
@@ -37,6 +41,7 @@ public class MonthlyBudgetWriter {
         profiles.requireProfile(userId);
         profiles.ensureCurrentSnapshots(userId);
         MonthlyBudget budget = budgets.find(userId, month).orElseThrow(ApiException::unavailable);
+        var recorder=history.getIfAvailable();var before=recorder==null?null:recorder.capture(userId,month);
         try {
             JsonPatch.fields(body, "fixed_essential_expenses", "variable_essential_expenses", "discretionary_expenses", "savings", "income_entries");
             long fixed=BudgetInput.amount(body,"fixed_essential_expenses"), variable=BudgetInput.amount(body,"variable_essential_expenses"),
@@ -47,7 +52,8 @@ public class MonthlyBudgetWriter {
             if (budget.incomeType() == IncomeType.REGULAR) Math.addExact(budget.expectedIncome(), income);
             budgets.saveExpenses(userId, budget.id(), fixed, variable, discretionary, savings, clock.instant());
             recalculation.recalculateFrom(userId, month);
-            revisions.bump(userId, "MONTHLY_BUDGET_CHANGED");
+            long revision=revisions.bump(userId, "MONTHLY_BUDGET_CHANGED");
+            if(recorder!=null)recorder.record(userId,revision,Origin.MONTHLY_BUDGET,month,before,recorder.capture(userId,month));
             return reader.view(userId, month);
         } catch (ApiException ex) {
             if (!ex.code().equals("VALIDATION_ERROR")) throw ex;

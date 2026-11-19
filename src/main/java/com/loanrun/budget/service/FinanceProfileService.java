@@ -16,6 +16,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
+import org.springframework.beans.factory.ObjectProvider;
+import com.loanrun.risk.domain.RiskHistoryModels.Origin;
 
 @Service
 public class FinanceProfileService implements FinanceProfileQueryPort {
@@ -24,8 +26,10 @@ public class FinanceProfileService implements FinanceProfileQueryPort {
     private final RevisionPort revisions;
     private final JdbcTemplate jdbc;
     private final Clock clock;
-    public FinanceProfileService(FinanceProfileRepository profiles, DemoUserRepository users, RevisionPort revisions, JdbcTemplate jdbc, Clock clock) {
+    private final ObjectProvider<FinanceChangeRecorder> history;
+    public FinanceProfileService(FinanceProfileRepository profiles, DemoUserRepository users, RevisionPort revisions, JdbcTemplate jdbc, Clock clock,ObjectProvider<FinanceChangeRecorder> history) {
         this.profiles = profiles; this.users = users; this.revisions = revisions; this.jdbc = jdbc; this.clock = clock;
+        this.history=history;
     }
 
     @Override @Transactional(readOnly = true)
@@ -66,6 +70,8 @@ public class FinanceProfileService implements FinanceProfileQueryPort {
             Math.addExact(Math.addExact(profile.fixedEssentialExpenses(), profile.variableEssentialExpenses()),
                 Math.addExact(profile.discretionaryExpenses(), profile.savings()));
             snapshotMissingMonths(previous.orElse(profile), YearMonth.now(clock));
+            var recorder=history.getIfAvailable();var month=YearMonth.now(clock);
+            var before=recorder!=null&&previous.isPresent()?recorder.capture(userId,month):null;
             profiles.save(profile);
             user.setIncomeType(incomeType);
             // Preserve completed/confirmed months and each month's original discretionary limit.
@@ -76,7 +82,8 @@ public class FinanceProfileService implements FinanceProfileQueryPort {
                 """, profile.monthlyIncome(), incomeType.name(), payday, profile.fixedEssentialExpenses(),
                 profile.variableEssentialExpenses(), profile.discretionaryExpenses(), profile.savings(), profile.emergencyFund(),
                 java.sql.Timestamp.from(now), userId, java.sql.Date.valueOf(YearMonth.now(clock).atDay(1)));
-            revisions.bump(userId, "FINANCE_PROFILE_CHANGED");
+            long revision=revisions.bump(userId, "FINANCE_PROFILE_CHANGED");
+            if(recorder!=null)recorder.record(userId,revision,Origin.PROFILE,month,before,recorder.capture(userId,month));
             return profile.response();
         } catch (ApiException ex) {
             if (!ex.code().equals("VALIDATION_ERROR")) throw ex;

@@ -53,6 +53,8 @@ management:
     health:
       show-details: never
 loanrun:
+  risk-history:
+    enabled: ${RISK_HISTORY_ENABLED:false}
   demo-mode: ${DEMO_MODE:false}
   allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8080}
 springdoc:

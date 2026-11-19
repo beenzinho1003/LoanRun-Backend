@@ -13,6 +13,8 @@ import java.time.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.ObjectProvider;
+import com.loanrun.risk.domain.RiskHistoryModels.Origin;
 
 @Service
 public class IncomeEntryService {
@@ -25,11 +27,13 @@ public class IncomeEntryService {
     private final IdempotencyService idempotency;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final ObjectProvider<FinanceChangeRecorder> history;
     public IncomeEntryService(MonthlyBudgetRepository budgets, IncomeEntryRepository entries, FinanceProfileService profiles,
             MonthlyBudgetReader reader, BudgetRecalculationPort recalculation, RevisionPort revisions,
-            IdempotencyService idempotency, ObjectMapper mapper, Clock clock) {
+            IdempotencyService idempotency, ObjectMapper mapper, Clock clock,ObjectProvider<FinanceChangeRecorder> history) {
         this.budgets=budgets; this.entries=entries; this.profiles=profiles; this.reader=reader;
         this.recalculation=recalculation; this.revisions=revisions; this.idempotency=idempotency; this.mapper=mapper; this.clock=clock;
+        this.history=history;
     }
     @Transactional
     public StoredResponse create(long userId, String key, JsonNode body) {
@@ -39,13 +43,15 @@ public class IncomeEntryService {
                 profiles.requireProfile(userId);
                 profiles.ensureCurrentSnapshots(userId);
                 var budget=budgets.find(userId,month).orElseThrow(ApiException::unavailable);
+                var recorder=history.getIfAvailable();var before=recorder==null?null:recorder.capture(userId,month);
                 var input=IncomeEntryInput.parse(body,budget,clock,false);
                 long total=budgets.entries(userId,budget.id()).stream().map(IncomeEntry::amount).reduce(input.amount(),Math::addExact);
                 if(budget.incomeType()==IncomeType.REGULAR) Math.addExact(budget.expectedIncome(),total);
                 var created=entries.insert(userId,budget.id(),input.type(),input.date(),input.amount(),clock.instant());
                 budgets.confirmIncome(userId,budget.id(),clock.instant());
                 recalculation.recalculateFrom(userId,month);
-                revisions.bump(userId,"INCOME_CHANGED");
+                long revision=revisions.bump(userId,"INCOME_CHANGED");
+                if(recorder!=null)recorder.record(userId,revision,Origin.INCOME_ENTRY,month,before,recorder.capture(userId,month));
                 var view=reader.view(userId,month);
                 return new StoredResponse(201,mapper.valueToTree(ApiResponse.success("INCOME_ENTRY_CREATE_SUCCESS","소득 입금 기록을 저장했습니다.",
                     new IncomeCreated(created,month.toString(),view.monthlyIncome(),view.allocationNeedsReview(),view.metrics()))));
