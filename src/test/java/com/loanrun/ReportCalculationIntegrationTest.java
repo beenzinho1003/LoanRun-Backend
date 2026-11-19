@@ -49,7 +49,7 @@ class ReportCalculationIntegrationTest {
     @LocalServerPort int port;@Autowired ObjectMapper json;@Autowired ReportJobRepository jobs;@Autowired JdbcTemplate jdbc;
     @Autowired RevisionPort revisions;@Autowired ReportCalculation calculation;@Autowired RiskSimulationService risks;@Autowired StrategyCalculator strategies;
     @Autowired ReportJobStoreIntegrationTest.MutableClock clock;
-    @MockitoBean LoanQueryPort loans;@MockitoBean PlanQueryPort plans;@MockitoBean BudgetQueryPort budgets;
+    @MockitoBean LoanQueryPort loans;@MockitoBean PlanQueryPort plans;@MockitoBean com.loanrun.budget.service.BudgetReadService budgets;
     @MockitoBean ReportHistoryQueryPort history;@MockitoBean PlanPerformanceQueryPort performance;
     @MockitoSpyBean RepaymentEngine engine;@MockitoSpyBean ExplanationClient explanations;
     final AtomicLong owner=new AtomicLong();final AtomicBoolean two=new AtomicBoolean(),unobserved=new AtomicBoolean(),zeros=new AtomicBoolean();

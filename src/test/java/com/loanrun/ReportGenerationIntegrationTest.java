@@ -50,7 +50,7 @@ class ReportGenerationIntegrationTest {
     @LocalServerPort int port;@Autowired ObjectMapper mapper;@Autowired JdbcTemplate jdbc;@Autowired ReportJobRepository jobs;@Autowired ReportJobStore store;
     @Autowired RevisionPort revisions;@Autowired UserMutationLock locks;@Autowired TransactionTemplate transactions;@Autowired Events events;
     @Autowired ReportJobStoreIntegrationTest.MutableClock clock;
-    @MockitoBean LoanQueryPort loans;@MockitoBean PlanQueryPort plans;@MockitoBean BudgetQueryPort budgets;
+    @MockitoBean LoanQueryPort loans;@MockitoBean PlanQueryPort plans;@MockitoBean com.loanrun.budget.service.BudgetReadService budgets;
     @MockitoBean ReportHistoryQueryPort history;@MockitoBean PlanPerformanceQueryPort performance;@MockitoBean RepaymentEngine engine;
     final AtomicLong owner=new AtomicLong();final YearMonth month=YearMonth.of(2026,11);
     LoanTerms loan(){return new LoanTerms(7,owner.get(),"가상",LoanType.CREDIT,100000,100000,month.atDay(17),BigDecimal.valueOf(6),RateType.FIXED,
