@@ -54,6 +54,17 @@ class LoanPreviewHttpTest {
         assertThat(invalid.statusCode()).isEqualTo(400);assertThat(mapper.readTree(invalid.body()).path("code").asText()).isEqualTo("VALIDATION_ERROR");
         assertThat(jdbc.queryForObject("select revision from demo_users where id=?",Long.class,id)).isEqualTo(revision);
         assertThat(jdbc.queryForObject("select count(*) from idempotency_records",Long.class)).isZero();
-        assertThat(jdbc.queryForObject("select count(*) from demo_users",Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from demo_users where id=?",Long.class,id)).isEqualTo(1);
     }
+    @Test void registrationWithoutRequiredBudgetProviderFailsClosed() throws Exception {
+        var browser=HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build();
+        var profile=request(browser,"GET","/api/users/me/",null,null);
+        long id=mapper.readTree(profile.body()).path("data").path("user_id").longValue();
+        var result=request(browser,"POST","/api/loans/",new LoanPreviewTest().body().toString(),"http://localhost:5173");
+        assertThat(result.statusCode()).isEqualTo(503);
+        assertThat(mapper.readTree(result.body()).path("code").asText()).isEqualTo("SERVICE_UNAVAILABLE");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM loans WHERE user_id=?",Long.class,id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT revision FROM demo_users WHERE id=?",Long.class,id)).isZero();
+    }
+
 }

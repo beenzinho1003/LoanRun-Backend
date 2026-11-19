@@ -63,11 +63,38 @@ payment, principal, interest and required BULLET saving using the real engine. I
 advance financial revision. Manual product names work independently; selecting a product requires the
 Team 2 catalog port (503 until connected, missing product 404). Numeric strings and unknown fields are rejected.
 
-Current routes: POST `/api/loans/preview/`, GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
-GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/api/risks/simulate/`,
-GET/PATCH `/api/reports/comparison-settings/`, GET `/api/reports/latest/`, GET `/api/reports/{report_id}/`,
-POST `/api/reports/` (persisted admission and after-commit calculation; source ports require integration),
-GET `/api/reports/strategy/` (stored snapshot and current candidate validation).
+Loan registration: `POST /api/loans/` uses the same validation and returns 201 when its required budget
+recalculation provider is integrated. It atomically stores V2 loan sources, the default MATURITY snapshot and
+first due, enforcing seven active loans under the existing user lock. Optional `Idempotency-Key` replays the
+original response. Without the real recalculation provider it returns 503 and saves nothing. See
+[registration transaction and migration notes](docs/LOAN_REGISTRATION.md) before applying V2.
+
+Loan rate history: `GET /api/loans/{loan_id}/rate-history/` returns stored manual rates in application-date/ID
+order, including the registration rate with an unknown (null) previous rate. Foreign, missing and deleted
+loans return the same 404; paid-loan history remains visible. No financial sources are changed. See
+[rate history behavior and tests](docs/LOAN_RATE_HISTORY.md). Rate change registration is still pending.
+
+Payment detail: `GET /api/payments/{payment_id}/` returns the session owner's preserved actual payment,
+including fee/savings-use components, every saved due allocation and snapshot-based editability.
+History remains readable for PAID/DELETED loans. Missing/foreign records return the same 404; no actuals
+are rewritten or inferred. See [payment detail semantics](docs/PAYMENT_DETAIL.md). Payment writes remain pending.
+
+Payment list: `GET /api/payments/` accepts optional `loan_id`, `from`, `to`, `type`, `page`, `page_size`.
+It uses inclusive actual-date filters, stable newest-first pages (default 1/20, maximum size 100), and
+full-filter count/totals independent of the page. Items reuse payment detail, including all due allocations.
+See [pagination, ownership and aggregate semantics](docs/PAYMENT_LIST.md).
+
+Due confirmation: `PATCH /api/payments/schedule/{due_item_id}/confirmation/` accepts
+`{"unpaid_confirmed":true}` or false with required `Idempotency-Key`. Only past unrecorded regular dues
+can be confirmed/cancelled; actual payments and assets remain unchanged. The flag, budget recalculation,
+revision and replay response commit together. Without the real recalculation provider it returns 503 and
+saves nothing. See [confirmation states, locking and integration limits](docs/DUE_CONFIRMATION.md).
+
+Current routes: POST `/api/loans/`, POST `/api/loans/preview/`, GET `/api/loans/{loan_id}/rate-history/`, GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
+GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/api/risks/simulate/`, GET `/api/payments/`, GET `/api/payments/{payment_id}/`, PATCH `/api/payments/schedule/{due_item_id}/confirmation/`.
+Report routes also include GET/PATCH `/api/reports/comparison-settings/`, GET `/api/reports/latest/`,
+GET `/api/reports/{report_id}/`, POST `/api/reports/` (persisted admission and after-commit calculation;
+source ports require integration), and GET `/api/reports/strategy/` (stored snapshot and current candidate validation).
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
@@ -111,6 +138,10 @@ See [generation admission](docs/REPORT_GENERATION.md) for the remaining worker p
 [Technical contracts](docs/CONTRACT.md) define domain ownership, ports and migration reservations.
 Team 1 implements the repayment engine and loans/payments/savings/plans. Team 2 owns common infrastructure
 and user/budget/catalog/dashboard/risk/report/settings. Runtime mock implementations are prohibited.
+
+The owner-scoped V2 source read repository in `loan/read` preserves original loan/history/ledger facts.
+See [source query semantics and projection limits](docs/LOAN_SOURCE_QUERIES.md). It does not yet implement
+LoanQueryPort or enable real budget/CSV/risk integration.
 
 The real, pure `RepaymentEngine` implementation lives in `finance/engine`; Spring wiring is in `finance/config`.
 See [calculation behavior and limits](docs/REPAYMENT_ENGINE.md) and the

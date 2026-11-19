@@ -1,0 +1,20 @@
+// Opt-in Testcontainers audit, without modifying the application build or enabling production out-of-order.
+allprojects {
+    afterEvaluate {
+        sourceSets {
+            migrationAudit {
+                java.setSrcDirs([rootProject.file('docs/migration-audit/java')])
+                compileClasspath += sourceSets.test.compileClasspath
+                runtimeClasspath += sourceSets.test.runtimeClasspath
+            }
+        }
+        tasks.register('migrationAudit', Test) {
+            testClassesDirs = sourceSets.migrationAudit.output.classesDirs
+            classpath = sourceSets.migrationAudit.runtimeClasspath
+            useJUnitPlatform()
+            systemProperty 'auditRoot', rootProject.file('.tools/migration-audit').absolutePath
+            systemProperty 'auditInspect', rootProject.file('docs/ops/inspect_flyway.sql').absolutePath
+            testLogging { showStandardStreams = true; events 'passed', 'failed' }
+        }
+    }
+}

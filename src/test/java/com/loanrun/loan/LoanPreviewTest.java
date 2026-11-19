@@ -38,7 +38,7 @@ class LoanPreviewTest {
         CurrentUserProvider current = new CurrentUserProvider() {
             public long currentUserId() { return 7; } public PlanType currentPlanType() { return PlanType.FREE; } public void requirePro() { throw new AssertionError(); }
         };
-        var mvc = MockMvcBuilders.standaloneSetup(new LoanController(current, service()))
+        var mvc = MockMvcBuilders.standaloneSetup(new LoanController(current, service(), null))
             .setControllerAdvice(new GlobalExceptionHandler()).setMessageConverters(new MappingJackson2HttpMessageConverter(mapper)).build();
         mvc.perform(post("/api/loans/preview/").contentType("application/json").content(body().toString()))
             .andExpect(status().isOk()).andExpect(jsonPath("code").value("LOAN_PREVIEW_SUCCESS"))
