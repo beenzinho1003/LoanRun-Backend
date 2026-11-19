@@ -97,6 +97,10 @@ GET `/api/reports/{report_id}/`, POST `/api/reports/` (persisted admission and a
 source ports require integration), and GET `/api/reports/strategy/` (stored snapshot and current candidate validation).
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
+Dashboard consumer: GET `/api/dashboard/` composes selected ledger projections with household risk and
+server-gated report status. The proposed source provider is still an integration dependency; see
+[dashboard behavior and verification limits](docs/DASHBOARD.md).
+
 Export accepts `format=csv` and optional `start_month`/`end_month` in `YYYY-MM` form.
 Only the session owner's loans and preserved payments are exported, including historical transactions for deleted loans.
 Month filters apply to payments. The CSV uses UTF-8 BOM, CRLF, quoted cells and spreadsheet formula protection.
