@@ -7,8 +7,9 @@ import com.loanrun.common.error.ApiException;
 import com.loanrun.common.idempotency.IdempotencyService;
 import com.loanrun.common.idempotency.IdempotencyService.StoredResponse;
 import com.loanrun.payment.dto.DueConfirmation;
+import com.loanrun.payment.domain.DueStateCalculator.Status;
 import com.loanrun.payment.repository.DueConfirmationRepository;
-import java.time.*;
+import java.time.YearMonth;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -19,12 +20,12 @@ public class DueConfirmationService {
     private final IdempotencyService idempotency;
     private final RevisionPort revisions;
     private final DueConfirmationRepository dues;
+    private final StoredDueQueryService queries;
     private final ObjectProvider<BudgetRecalculationPort> budgets;
     private final ObjectMapper mapper;
-    private final Clock clock;
-    public DueConfirmationService(IdempotencyService idempotency,RevisionPort revisions,DueConfirmationRepository dues,
-        ObjectProvider<BudgetRecalculationPort> budgets,ObjectMapper mapper,Clock clock) {
-        this.idempotency=idempotency;this.revisions=revisions;this.dues=dues;this.budgets=budgets;this.mapper=mapper;this.clock=clock;
+    public DueConfirmationService(IdempotencyService idempotency,RevisionPort revisions,DueConfirmationRepository dues,StoredDueQueryService queries,
+        ObjectProvider<BudgetRecalculationPort> budgets,ObjectMapper mapper) {
+        this.idempotency=idempotency;this.revisions=revisions;this.dues=dues;this.queries=queries;this.budgets=budgets;this.mapper=mapper;
     }
 
     @Transactional
@@ -43,16 +44,20 @@ public class DueConfirmationService {
             throw ApiException.validation("unpaid_confirmed","unpaid_confirmed boolean 값만 입력해 주세요.");
         boolean confirmed=body.path("unpaid_confirmed").booleanValue();
         var due=dues.lock(userId,dueId);
-        if(!"ACTIVE".equals(due.loanStatus())||due.required()==0||dues.allocationCount(userId,due.loanId(),dueId)>0)
-            throw DueConfirmationRepository.conflict();
-        if(!due.date().isBefore(LocalDate.now(clock)))throw new ApiException(HttpStatus.BAD_REQUEST,
+        var current=queries.find(userId,dueId).state();
+        if(!"ACTIVE".equals(due.loanStatus()))throw DueConfirmationRepository.conflict();
+        if(current.status()==Status.UPCOMING)throw new ApiException(HttpStatus.BAD_REQUEST,
             "DUE_CONFIRMATION_VALIDATION_ERROR","기한 경과한 미기록 회차만 미납 확인할 수 있습니다.");
-        var budget=budgets.getIfAvailable();if(budget==null)throw ApiException.unavailable();
-        dues.confirm(userId,due,confirmed);
-        budget.recalculateFrom(userId,YearMonth.from(due.date()));
-        revisions.bump(userId,"DUE_CONFIRMATION_RECORDED");
+        if(current.status()!=Status.UNRECORDED&&current.status()!=Status.UNPAID)throw DueConfirmationRepository.conflict();
+        boolean changed=due.confirmed()!=confirmed;
+        if(changed) {
+            var budget=budgets.getIfAvailable();if(budget==null)throw ApiException.unavailable();
+            dues.confirm(userId,due,confirmed);
+            budget.recalculateFrom(userId,YearMonth.from(due.date()));
+            revisions.bump(userId,"DUE_CONFIRMATION_RECORDED");
+        }
         String status=confirmed?"UNPAID":"UNRECORDED";
-        var response=new DueConfirmation(dueId,due.loanId(),due.date(),due.required(),0,due.required(),confirmed,status,status,true);
+        var response=new DueConfirmation(dueId,due.loanId(),due.date(),due.required(),current.paidRequiredAmount(),current.outstandingAmount(),confirmed,status,status,changed);
         return new StoredResponse(200,mapper.valueToTree(ApiResponse.success("DUE_CONFIRMATION_SUCCESS","정기 납부 미납 여부 확인 성공",response)));
     }
 }

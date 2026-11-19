@@ -32,6 +32,7 @@ class PaymentDetailIntegrationTest {
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
     @Autowired PaymentReadRepository payments;
+    @Autowired com.loanrun.payment.service.StoredDueQueryService storedDues;
     @LocalServerPort int port;
     // Synthetic V2 source fixtures only. No runtime provider or test budget/query-port replacement.
     HttpClient browser(){return HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build();}
@@ -97,6 +98,82 @@ class PaymentDetailIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT confirmed_unpaid FROM due_items WHERE id=?",Boolean.class,due)).isFalse();
         assertThat(jdbc.queryForObject("SELECT revision FROM demo_users WHERE id=?",Long.class,owner)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM idempotency_records WHERE user_id=?",Long.class,owner)).isZero();
+    }
+    @Test void unchangedConfirmationNeedsNoBudgetProviderAndPreservesRevision()throws Exception {
+        var browser=browser();long owner=owner(browser),loan=loan(owner),due=due(owner,loan,"2026-03-10");
+        var before=jdbc.queryForMap("SELECT revision,updated_at FROM demo_users WHERE id=?",owner);
+        var response=browser.send(HttpRequest.newBuilder(URI.create("http://localhost:"+port+"/api/payments/schedule/"+due+"/confirmation/"))
+            .header("Origin","http://localhost:5173").header("Content-Type","application/json").header("Idempotency-Key","no-change")
+            .method("PATCH",HttpRequest.BodyPublishers.ofString("{\"unpaid_confirmed\":false}")).build(),HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(200);assertThat(json(response).path("data").path("report_stale").booleanValue()).isFalse();
+        assertThat(jdbc.queryForMap("SELECT revision,updated_at FROM demo_users WHERE id=?",owner)).isEqualTo(before);
+        assertThat(jdbc.queryForObject("SELECT confirmed_unpaid FROM due_items WHERE id=?",Boolean.class,due)).isFalse();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM idempotency_records WHERE user_id=?",Long.class,owner)).isEqualTo(1);
+    }
+    @Test void storedDueStatesUseCurrentKstDateAndPreserveAllFiveStatesWithoutGeneratingRows()throws Exception {
+        var browser=browser();long owner=owner(browser),loan=loan(owner);
+        long unrecorded=due(owner,loan,"2026-03-10"),unpaid=due(owner,loan,"2026-03-11"),partial=due(owner,loan,"2026-03-12"),
+            paid=due(owner,loan,"2026-03-13"),today=due(owner,loan,"2026-03-31"),future=due(owner,loan,"2026-04-01");
+        jdbc.update("UPDATE due_items SET confirmed_unpaid=true WHERE id IN (?,?)",unpaid,partial);
+        long p=payment(owner,loan,"2026-03-25","REGULAR",500100,0,30000,100,0);
+        allocate(owner,loan,p,partial,100,0,0);allocate(owner,loan,p,paid,500000,30000,100);
+        var data=storedDues.range(owner,new com.loanrun.common.contract.FinanceModels.DateRange(LocalDate.of(2026,3,10),LocalDate.of(2026,4,1)),null);
+        assertThat(data).extracting(v->v.source().due().id()).containsExactly(unrecorded,unpaid,partial,paid,today,future);
+        assertThat(data).extracting(v->v.state().status().name()).containsExactly("UNRECORDED","UNPAID","PARTIAL","PAID","UPCOMING","UPCOMING");
+        assertThat(data).allSatisfy(v->assertThat(v.evaluatedOn()).isEqualTo(LocalDate.of(2026,3,31)));
+        assertThat(storedDues.find(owner,partial).source().due().confirmedUnpaid()).isTrue();
+        assertThat(storedDues.range(owner,new com.loanrun.common.contract.FinanceModels.DateRange(LocalDate.of(2026,4,2),LocalDate.of(2026,4,30)),null)).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM due_items WHERE user_id=?",Long.class,owner)).isEqualTo(6);
+    }
+    @Test void storedDueAggregatesActualComponentsAcrossPaymentsAndKeepsMultiDueAllocationsSeparate()throws Exception {
+        var browser=browser();long owner=owner(browser),loan=loan(owner),first=due(owner,loan,"2026-03-10"),second=due(owner,loan,"2026-03-11");
+        long p1=payment(owner,loan,"2026-03-25","REGULAR",350000,0,30010,100,0),p2=payment(owner,loan,"2026-03-26","REGULAR",250000,0,0,0,0);
+        allocate(owner,loan,p1,first,250000,30000,100);allocate(owner,loan,p2,first,250000,0,0);allocate(owner,loan,p1,second,100000,10,0);
+        var a=storedDues.find(owner,first);assertThat(a.source().allocationCount()).isEqualTo(2);
+        assertThat(a.source().principal()).isEqualTo(500000);assertThat(a.source().interest()).isEqualTo(30000);assertThat(a.source().fee()).isEqualTo(100);
+        assertThat(a.state().paidRequiredAmount()).isEqualTo(530100);assertThat(a.state().outstandingAmount()).isZero();
+        var b=storedDues.find(owner,second);assertThat(b.source().allocationCount()).isEqualTo(1);assertThat(b.state().allocatedAmount()).isEqualTo(100010);
+        assertThat(b.state().outstandingAmount()).isEqualTo(430090);
+    }
+    @Test void storedZeroBankAmountIsNotReplacedByEstimatedComponentsOrPaidActuals()throws Exception {
+        var browser=browser();long owner=owner(browser),loan=loan(owner),due=due(owner,loan,"2026-03-10");
+        jdbc.update("UPDATE due_items SET contractual_amount=0,required_amount=0 WHERE id=?",due);
+        var data=storedDues.find(owner,due);assertThat(data.source().due().contractualAmount()).isZero();
+        assertThat(data.source().due().estimatedInterest()).isEqualTo(30000);assertThat(data.state().status().name()).isEqualTo("PAID");
+        assertThat(data.state().allocatedAmount()).isZero();assertThat(data.state().outstandingAmount()).isZero();
+    }
+    @Test void storedDuesAreOwnerScopedAndRetainPaidDeletedLoanSourceHistory()throws Exception {
+        var a=browser();var b=browser();long ownerA=owner(a),ownerB=owner(b),loanA=loan(ownerA),loanB=loan(ownerB);
+        long dueA=due(ownerA,loanA,"2026-03-10"),dueB=due(ownerB,loanB,"2026-03-10");
+        var range=new com.loanrun.common.contract.FinanceModels.DateRange(LocalDate.of(2026,3,10),LocalDate.of(2026,3,10));
+        assertThat(storedDues.range(ownerA,range,null)).extracting(v->v.source().due().id()).containsExactly(dueA);
+        assertThatThrownBy(()->storedDues.find(ownerA,dueB)).isInstanceOfSatisfying(com.loanrun.common.error.ApiException.class,ex->assertThat(ex.code()).isEqualTo("DUE_ITEM_NOT_FOUND"));
+        assertThatThrownBy(()->storedDues.range(ownerA,range,loanB)).isInstanceOfSatisfying(com.loanrun.common.error.ApiException.class,ex->assertThat(ex.code()).isEqualTo("LOAN_NOT_FOUND"));
+        for(String status:List.of("PAID","DELETED")) {
+            jdbc.update("UPDATE loans SET status=? WHERE id=?",status,loanA);
+            var result=storedDues.range(ownerA,range,loanA);assertThat(result).hasSize(1);
+            assertThat(result.getFirst().source().loanStatus().name()).isEqualTo(status);
+        }
+    }
+    @Test void extraRepaymentIsNotRegularFulfillmentAndInvalidExtraAllocationFailsClosed()throws Exception {
+        var browser=browser();long owner=owner(browser),loan=loan(owner),due=due(owner,loan,"2026-03-10");
+        long extra=payment(owner,loan,"2026-03-25","EXTRA",0,100,0,0,0);
+        assertThat(storedDues.find(owner,due).state().status().name()).isEqualTo("UNRECORDED");
+        allocate(owner,loan,extra,due,100,0,0);
+        assertThatThrownBy(()->storedDues.find(owner,due)).isInstanceOfSatisfying(com.loanrun.common.error.ApiException.class,ex->assertThat(ex.code()).isEqualTo("SERVICE_UNAVAILABLE"));
+    }
+    @Test void storedDueOverflowDoesNotWrapAndQueriesNeverWriteFinancialSources()throws Exception {
+        var browser=browser();long owner=owner(browser),loan=loan(owner),due=due(owner,loan,"2026-03-10");
+        var before=jdbc.queryForMap("SELECT * FROM due_items WHERE id=?",due);var userBefore=jdbc.queryForMap("SELECT revision,updated_at FROM demo_users WHERE id=?",owner);
+        var first=storedDues.find(owner,due);assertThat(storedDues.find(owner,due)).isEqualTo(first);
+        var results=storedDues.range(owner,new com.loanrun.common.contract.FinanceModels.DateRange(LocalDate.of(2026,3,10),LocalDate.of(2026,3,10)),null);
+        assertThatThrownBy(results::clear).isInstanceOf(UnsupportedOperationException.class);
+        assertThat(jdbc.queryForMap("SELECT * FROM due_items WHERE id=?",due)).isEqualTo(before);
+        assertThat(jdbc.queryForMap("SELECT revision,updated_at FROM demo_users WHERE id=?",owner)).isEqualTo(userBefore);
+        for(int i=0;i<2;i++) {
+            long p=payment(owner,loan,"2026-03-25","REGULAR",Long.MAX_VALUE-1,0,0,0,0);allocate(owner,loan,p,due,Long.MAX_VALUE-1,0,0);
+        }
+        assertThatThrownBy(()->storedDues.find(owner,due)).isInstanceOfSatisfying(com.loanrun.common.error.ApiException.class,ex->assertThat(ex.code()).isEqualTo("SERVICE_UNAVAILABLE"));
     }
 
     @Test void emptyListUsesExactDefaultsEnvelopeAndZeroQueryTotals()throws Exception {

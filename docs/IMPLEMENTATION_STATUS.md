@@ -119,3 +119,16 @@ No schema, common interface, environment/dependency or Team 2 code changes. Team
 implemented (#13, #14, #18, #24, #28, #31), with #13/#31 integration-blocked by actual recalculation.
 The other 18 operations, financial query projections and real budget integration remain pending. This
 is not a frontend or deployment claim. Validation results are recorded in the feature PR.
+
+## Follow-up: stored due states and no-change confirmation (Issue #95)
+
+After #94 merged at 9bb9fa3, owner-scoped stored-due queries aggregate actual allocation principal,
+interest and fee, preserve frozen due sources/loan status and evaluate all five current regular-due
+states. #31 eligibility reuses that calculator under its existing user/due locks. New-key requests
+that retain the current confirmation flag now skip recalculation/revision and return report_stale=false
+(no additional invalidation), correcting the prior reconfirmation behavior to FINAL_DECISIONS.
+The read model does not synthesize future dues, infer historical confirmation state or register an
+incomplete LoanQueryPort. No new HTTP operation, shared port, schema or Team 2 code change. Six Team1
+HTTP operations remain implemented; actual flag changes/registration still require the real budget
+provider. Terms/balance replay, complete due coverage and monthly observation projections remain
+needed before LoanQueryPort and actual budget/CSV/risk integration can be reported complete.

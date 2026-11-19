@@ -26,11 +26,6 @@ public class DueConfirmationRepository {
                 rs.getObject("due_date",LocalDate.class),rs.getLong("required_amount"),rs.getBoolean("confirmed_unpaid"),rs.getString("loan_status")));
         if(rows.isEmpty())throw missing();return rows.getFirst();
     }
-    public long allocationCount(long userId,long loanId,long dueId) {
-        return jdbc.queryForObject("""
-            SELECT count(*) FROM payment_allocations WHERE user_id=:user AND loan_id=:loan AND due_item_id=:due
-            """,Map.of("user",userId,"loan",loanId,"due",dueId),Long.class);
-    }
     public void confirm(long userId,Due due,boolean confirmed) {
         int changed=jdbc.update("""
             UPDATE due_items d SET confirmed_unpaid=:confirmed

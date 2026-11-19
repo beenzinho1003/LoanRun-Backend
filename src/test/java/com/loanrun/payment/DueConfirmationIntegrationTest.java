@@ -145,8 +145,10 @@ class DueConfirmationIntegrationTest {
         var browser=browser();long owner=owner(browser),loan=loan(owner),first=due(owner,loan,"2026-03-10",100),second=due(owner,loan,"2026-03-11",200);
         assertThat(confirm(browser,first,true,"key").statusCode()).isEqualTo(200);
         assertThat(confirm(browser,second,true,"key").statusCode()).isEqualTo(200);
-        assertThat(confirm(browser,first,true,"reconfirm").statusCode()).isEqualTo(200);
-        assertThat(flag(first)).isTrue();assertThat(flag(second)).isTrue();assertThat(revision(owner)).isEqualTo(3);assertThat(keys(owner)).isEqualTo(3);
+        var repeated=confirm(browser,first,true,"reconfirm");assertThat(repeated.statusCode()).isEqualTo(200);
+        assertThat(json(repeated).path("data").path("report_stale").booleanValue()).isFalse();
+        assertThat(flag(first)).isTrue();assertThat(flag(second)).isTrue();assertThat(revision(owner)).isEqualTo(2);assertThat(keys(owner)).isEqualTo(3);
+        verify(budget,times(2)).recalculateFrom(owner,YearMonth.of(2026,3));
     }
     @Test void storedResponseCannotBeReplayedByAnotherAnonymousSession()throws Exception {
         var a=browser();var b=browser();long ownerA=owner(a),ownerB=owner(b),loan=loan(ownerA),due=due(ownerA,loan,"2026-03-10",100);

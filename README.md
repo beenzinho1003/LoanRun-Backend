@@ -87,8 +87,9 @@ See [pagination, ownership and aggregate semantics](docs/PAYMENT_LIST.md).
 Due confirmation: `PATCH /api/payments/schedule/{due_item_id}/confirmation/` accepts
 `{"unpaid_confirmed":true}` or false with required `Idempotency-Key`. Only past unrecorded regular dues
 can be confirmed/cancelled; actual payments and assets remain unchanged. The flag, budget recalculation,
-revision and replay response commit together. Without the real recalculation provider it returns 503 and
-saves nothing. See [confirmation states, locking and integration limits](docs/DUE_CONFIRMATION.md).
+revision and replay response commit together for an actual flag change. Without the real recalculation
+provider a changed request returns 503 and saves nothing. An unchanged request skips recalculation/revision
+and returns `report_stale: false` (no additional invalidation). See [confirmation states, locking and integration limits](docs/DUE_CONFIRMATION.md).
 
 Current routes: POST `/api/loans/`, POST `/api/loans/preview/`, GET `/api/loans/{loan_id}/rate-history/`, GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
 GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/api/risks/simulate/`, GET `/api/payments/`, GET `/api/payments/{payment_id}/`, PATCH `/api/payments/schedule/{due_item_id}/confirmation/`.
@@ -185,6 +186,11 @@ together, so failed requests can safely retry the same key. Entry types/dates/am
 [Technical contracts](docs/CONTRACT.md) define domain ownership, ports and migration reservations.
 Team 1 implements the repayment engine and loans/payments/savings/plans. Team 2 owns common infrastructure
 and user/budget/catalog/dashboard/risk/report/settings. Runtime mock implementations are prohibited.
+
+Stored-due queries in `payment` aggregate actual regular allocation components and evaluate the five
+regular-due states using the KST business date. They also drive confirmation eligibility. See
+[stored due state boundaries and coverage](docs/STORED_DUE_STATES.md). They do not generate schedules,
+install LoanQueryPort or assert that missing due rows mean zero debt.
 
 The owner-scoped V2 source read repository in `loan/read` preserves original loan/history/ledger facts.
 See [source query semantics and projection limits](docs/LOAN_SOURCE_QUERIES.md). It does not yet implement
