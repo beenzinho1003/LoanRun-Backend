@@ -95,6 +95,9 @@ GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, POST `/ap
 Report routes also include GET/PATCH `/api/reports/comparison-settings/`, GET `/api/reports/latest/`,
 GET `/api/reports/{report_id}/`, POST `/api/reports/` (persisted admission and after-commit calculation;
 source ports require integration), and GET `/api/reports/strategy/` (stored snapshot and current candidate validation).
+Current routes: GET/PATCH `/api/users/me/`, GET/PATCH `/api/settings/subscription/`,
+GET/PATCH `/api/settings/notifications/`, GET `/api/settings/export/`, GET/PUT `/api/budgets/profile/`,
+GET/PUT `/api/budgets/{year_month}/`, PUT `/api/budgets/{year_month}/allocation/`.
 Further domain endpoints are tracked locally as pending until implemented and tested.
 
 Dashboard consumer: GET `/api/dashboard/` composes selected ledger projections with household risk and
@@ -140,6 +143,36 @@ Report POST captures server-owned input and deduplicates jobs by user, scope, re
 responses consume no new attempt. Job/input/attempt commit together and processing listeners must use
 AFTER_COMMIT. This branch implements admission only; no placeholder report or AI call is produced.
 See [generation admission](docs/REPORT_GENERATION.md) for the remaining worker prerequisites.
+Finance profile GET returns 404 before the first save. PUT validates whole-won amounts, the income type and payday,
+and synchronizes the anonymous user's income type. Zero and unknown emergency funds remain distinct.
+Profile changes update only current/future unconfirmed DEFAULT months, preserving past/INPUT/confirmed months
+and each month's original discretionary limit. These two APIs work without Team 1 loan/engine implementations.
+
+Monthly budget GET requires `YYYY-MM` and uses only the session owner's data. It combines saved monthly inputs
+with Team 1's due/payment/saving and plan projections. Missing implementations return `503 SERVICE_UNAVAILABLE`.
+Future months are forecasts without persisted future rows; unknown actuals remain null, including unobserved
+payments/savings. Confirmed zero income or spending remains zero. Irregular planning uses three completed
+observed months, including confirmed zero months, or the profile estimate when there is insufficient history.
+The request may materialize elapsed DEFAULT snapshots and refresh derived settlements under the user lock;
+it does not alter original inputs, long-term plans or revision. Internal budget queries do not write.
+Past corrections recalculate settlements and carry only to the immediately following month.
+Income recording is a separate feature change.
+
+Monthly budget PUT accepts only the current KST month and requires all four expense amounts. Income entries
+are preserved when omitted, replaced as a whole when supplied, and deleted with `[]`; explicit null is invalid.
+Existing entry IDs must belong to this user and month. Entry types follow the monthly income type, dates must
+be in the current month and no later than today, and amounts must be positive whole won. Saving confirms the
+expenses while preserving the original discretionary limit, then recalculates settlements and advances revision
+once. Failure in validation or dependent projections rolls back the entire change, including income replacement.
+
+Allocation PUT saves a current-month override with a required `Idempotency-Key`. The server validates owned
+active loans, repayment/saving types, grace periods, actual spending floors and the latest allocation capacity
+under the user lock. Already-used money remains counted even if its loan is omitted. Unallocated cash is allowed
+and is not automatically added to reserve. Original principal, long-term plan versions and strategy are unchanged.
+Updated plan views come from Team 1's `PlanPresentationPort`; a missing implementation returns 503. Saving,
+settlement, revision and the stored retry response commit together. FREE responses hide strategy and priority,
+including replay of a response originally saved under PRO. Schema and shared-port prerequisites must be integrated
+before opening this feature's central PR.
 
 ## Shared development
 

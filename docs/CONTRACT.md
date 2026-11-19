@@ -65,6 +65,12 @@ plan saves consume capacity; ledger changes call recalculation without calling a
 | V5 | Team 2 | Report jobs, strategy candidates, comparison settings |
 
 Only V1 is part of bootstrap. Notification defaults are included in V1 so those APIs can be tested without applying V5 ahead of V2–V4.
+The separate V3 schema change prepares the six finance/budget/catalog tables without product API implementations.
+`monthly_allocations.loan_id` remains a scalar until Team 1's loan schema and a subsequent FK migration are coordinated.
+V3 was already shared in the closed combined draft; this split preserves its original content and checksum.
+Keep the schema PR in Draft until Team 1's V2 application order is confirmed. Fresh tests can apply V1/V3;
+a development DB that has applied V3 must coordinate a one-time Flyway out-of-order run when V2 arrives.
+Do not enable out-of-order globally in production. Validate the complete migration sequence before deployment.
 Coordinate migration ordering before merging later stages. Do not create empty placeholder migrations for another owner.
 Never edit a migration after sharing/applying it. Hibernate validates; Flyway creates schemas. No H2 substitution or ddl-auto=create.
 
