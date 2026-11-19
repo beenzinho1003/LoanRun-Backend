@@ -9,6 +9,7 @@ import com.loanrun.common.contract.FinanceModels.*;
 import com.loanrun.common.error.ApiException;
 import com.loanrun.risk.domain.RiskHistoryModels.*;
 import com.loanrun.risk.repository.RiskHistoryRepository;
+import com.loanrun.budget.service.FinanceChangeRecorder;
 import java.net.*;
 import java.net.http.*;
 import java.nio.file.*;
@@ -23,6 +24,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.*;
 import org.springframework.test.context.bean.override.mockito.*;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.*;
 
@@ -34,6 +36,7 @@ class FinanceHistoryIntegrationTest {
     @Container static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:16.16-bookworm");
     @DynamicPropertySource static void database(DynamicPropertyRegistry r){r.add("spring.datasource.url",DB::getJdbcUrl);r.add("spring.datasource.username",DB::getUsername);r.add("spring.datasource.password",DB::getPassword);}
     @LocalServerPort int port;@Autowired ObjectMapper mapper;@Autowired JdbcTemplate jdbc;@Autowired RevisionPort revisions;
+    @Autowired FinanceChangeRecorder recorder;@Autowired BudgetQueryPort budgetQuery;@Autowired TransactionTemplate tx;
     @MockitoBean LoanQueryPort loans;@MockitoBean PlanQueryPort plans;@MockitoSpyBean RiskHistoryRepository history;
     static final YearMonth MONTH=YearMonth.of(2026,11);
     @BeforeEach void setup()throws Exception{
@@ -82,5 +85,22 @@ class FinanceHistoryIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM income_entries WHERE user_id=?",Long.class,id)).isEqualTo(1);
         doCallRealMethod().when(target).append(any(Change.class));
         assertThat(call(c,"POST","/api/income-entries/","failed",body).statusCode()).isEqualTo(201);assertThat(changes(id)).hasSize(2);
+    }
+    @Test void irregularCaptureMatchesBudgetPlanningAverageWithoutLoanDependenciesInRecorder()throws Exception{
+        var c=browser();long id=initialize(c);var body=mapper.readTree(profile(3000000,1000000)).deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)body).put("income_type","IRREGULAR").putNull("payday");
+        assertThat(call(c,"PUT","/api/budgets/profile/",null,body.toString()).statusCode()).isEqualTo(200);
+        long[] amounts={100000,200000,700001};
+        for(int index=0;index<3;index++){
+            var month=MONTH.minusMonths(3-index);
+            long budget=jdbc.queryForObject("""
+                INSERT INTO monthly_budgets(user_id,year_month,income_type,expected_income,fixed_essential_expenses,variable_essential_expenses,
+                    discretionary_expenses,discretionary_limit,savings,income_confirmed,created_at,updated_at)
+                VALUES (?,?,'IRREGULAR',3000000,0,0,0,0,0,TRUE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id
+                """,Long.class,id,java.sql.Date.valueOf(month.atDay(1)));
+            jdbc.update("INSERT INTO income_entries(user_id,budget_id,entry_type,received_date,amount,created_at) VALUES (?,?,'IRREGULAR',?,?,CURRENT_TIMESTAMP)",id,budget,java.sql.Date.valueOf(month.atDay(1)),amounts[index]);
+        }
+        var captured=tx.execute(s->recorder.capture(id,MONTH));assertThat(captured.income()).isEqualTo(333334);
+        assertThat(budgetQuery.financeSnapshot(id,MONTH).planningIncome()).isEqualTo(captured.income());
     }
 }

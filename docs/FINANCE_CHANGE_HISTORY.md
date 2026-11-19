@@ -19,5 +19,6 @@ invented historical risk score or an assertion of actual received income. The or
 Failures in journal append roll back entries/expenses/revision/idempotency together. Existing history is never
 updated/deleted. The proposal SQL is applied only to isolated test databases until migration coordination.
 
-Verification: finance-history HTTP tests (3) plus existing profile/monthly-write/income tests (14), 17 passed.
+Verification: finance-history HTTP tests cover baseline/change/replay/rollback and irregular planning-income
+agreement with budget reads (4). Existing profile/monthly-write/income tests cover the unchanged API behavior.
 Ledger/plan inputs are test-only mocks. This does not establish live source or deployment completion.
