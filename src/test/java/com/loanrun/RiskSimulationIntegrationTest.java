@@ -35,7 +35,7 @@ class RiskSimulationIntegrationTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry r){r.add("spring.datasource.url",DB::getJdbcUrl);r.add("spring.datasource.username",DB::getUsername);r.add("spring.datasource.password",DB::getPassword);}
     @LocalServerPort int port;@Autowired ObjectMapper mapper;@Autowired RevisionPort revisions;@Autowired JdbcTemplate jdbc;
     @Autowired com.loanrun.risk.service.RiskSimulationService risk;
-    @MockitoBean LoanQueryPort loans;@MockitoBean PlanQueryPort plans;@MockitoBean BudgetQueryPort budgets;@MockitoBean RepaymentEngine engine;
+    @MockitoBean LoanQueryPort loans;@MockitoBean PlanQueryPort plans;@MockitoBean com.loanrun.budget.service.BudgetReadService budgets;@MockitoBean RepaymentEngine engine;
     final AtomicLong owner=new AtomicLong();static final YearMonth MONTH=YearMonth.of(2026,11);
     LoanTerms loan(long id,RateType rate){return new LoanTerms(id,owner.get(),"가상",LoanType.CREDIT,500000,500000,MONTH.atDay(17),BigDecimal.valueOf(6),rate,
         RepaymentMethod.EQUAL_PAYMENT,null,null,MONTH.atDay(25),25,MONTH.plusYears(2).atDay(25),id==1?400000L:100000L,100000L,null,

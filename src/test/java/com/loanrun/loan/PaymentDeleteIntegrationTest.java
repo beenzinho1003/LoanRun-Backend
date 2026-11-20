@@ -37,7 +37,7 @@ class PaymentDeleteIntegrationTest {
     @DynamicPropertySource static void db(DynamicPropertyRegistry r){r.add("spring.datasource.url",DB::getJdbcUrl);r.add("spring.datasource.username",DB::getUsername);r.add("spring.datasource.password",DB::getPassword);}
     @TestConfiguration static class Config {@Bean @Primary Clock testClock(){return new TestClock();}}
     @MockitoBean BudgetRecalculationPort recalc;
-    @MockitoBean BudgetQueryPort budget;
+    @MockitoBean com.loanrun.budget.service.BudgetReadService budget;
     @MockitoBean PlanQueryPort overall;
     @Autowired JdbcTemplate jdbc;@Autowired ObjectMapper mapper;@Autowired LoanRegistrationService registration;
     @Autowired LoanSourceRepository sources;@Autowired PlanViewQueryService views;@Autowired RevisionPort revisions;@Autowired Clock clock;

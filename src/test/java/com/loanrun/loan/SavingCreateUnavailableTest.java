@@ -29,7 +29,7 @@ import org.testcontainers.junit.jupiter.*;
 /** Production wiring with no replacement budget bean. Fixture setup is not a public registration success claim. */
 @Testcontainers
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties="server.servlet.session.cookie.secure=false")
-@Import(SavingCreateUnavailableTest.Config.class)
+@Import({SavingCreateUnavailableTest.Config.class, WithoutBudgetModule.class})
 class SavingCreateUnavailableTest {
     @Container static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:16.16-bookworm");
     @DynamicPropertySource static void db(DynamicPropertyRegistry r){r.add("spring.datasource.url",DB::getJdbcUrl);r.add("spring.datasource.username",DB::getUsername);r.add("spring.datasource.password",DB::getPassword);}

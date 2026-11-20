@@ -17,7 +17,7 @@ import org.testcontainers.junit.jupiter.*;
 
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties="server.servlet.session.cookie.secure=false")
-@Import(LoanPreviewHttpTest.Config.class)
+@Import({LoanPreviewHttpTest.Config.class, WithoutBudgetModule.class})
 class LoanPreviewHttpTest {
     @Container static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16.16-bookworm");
     @DynamicPropertySource static void db(DynamicPropertyRegistry r) {
